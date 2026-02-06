@@ -97,18 +97,11 @@ column_mapping = {
 
 all_data= pd.read_excel(excel_file, engine='odf', sheet_name=sheets_to_read, skiprows=1)
 
-df_adatok = all_data['Adatok']
-df_management = all_data['Management']
-df_EU_tamogatas = all_data['Elnyert EU-s támogatás']
-df_infrastruktura = all_data['Infrastruktúra']
-df_szolgaltatasok = all_data['Szolgáltatások']
-
-df_adatok = df_adatok.rename(columns=column_mapping)
-df_management = df_management.rename(columns=column_mapping)
-df_EU_tamogatas = df_EU_tamogatas.rename(columns=column_mapping)
-df_infrastruktura = df_infrastruktura.rename(columns=column_mapping)
-df_szolgaltatasok = df_szolgaltatasok.rename(columns=column_mapping)
-
+df_adatok = all_data['Adatok'].rename(columns=column_mapping)
+df_management = all_data['Management'].rename(columns=column_mapping)
+df_EU_tamogatas = all_data['Elnyert EU-s támogatás'].rename(columns=column_mapping)
+df_infrastruktura = all_data['Infrastruktúra'].rename(columns=column_mapping)
+df_szolgaltatasok = all_data['Szolgáltatások'].rename(columns=column_mapping)
 
 table_cimviselo_data = df_adatok[['cimviselo_nev', 'cimviselo_foglalkoztatott', 'cimviselo_cim', 'osszetetel_allam', 'osszetetel_onkormanyzat', 'osszetetel_belfoldi_magan', 'osszetetel_kulfoldi', 'osszetetel_egyeb',]]
 table_alapadat_data = df_adatok[['park_nev', 'ip_cimszerzes', 'tp_cimszerzes', 'park_email', 'park_telepules', 'park_utca', 'park_iranyitoszam', 'park_varmegye', 'park_hrsz', 'park_regio', 'osszterulet', 'hasznosithato_ter', 'beepitett_ter', 'hasznosithato_szabad_ter', 'hasznosithato_szabad_arany', 'parkolo', 'zoldterulet', 'berbeadott_ter_arany', 'eladott_ter_arany', 'kamara', 'klaszter', 'oktatas_kozep', 'munkaugy', 'civil', 'ip', 'onkormanyzat', 'fejlesztesi_ugynokseg', 'export_ugynokseg', 'kulfoldi_ip', 'nemzetkozi_projekt', 'oktatas_felso', 'kutatointezet', 'k+f_tevekenyseg', 'uj_technologia' , 	'sajat_szolg_arany' , 	'kiszervezett_szolg_arany']].copy()
@@ -126,9 +119,17 @@ cursor = conn.cursor()
 
 #cursor.execute("PRAGMA foreign_keys = ON;")
 
-table_cimviselo_data.to_sql('cimviselo', conn, if_exists='append', index=False)
-
-cimviselo_id = cursor.execute("SELECT last_insert_rowid()").fetchone()[0]
+cimviselo_tocheck = table_cimviselo_data['cimviselo_nev'].iloc[0]
+cursor.execute("SELECT cimviselo_ID FROM cimviselo WHERE cimviselo_nev = ?", (cimviselo_tocheck,))
+result = cursor.fetchone()
+if result:
+    cimviselo_id = result[0]
+    cols = ", ".join([f"{col} = ?" for col in table_cimviselo_data.columns])
+    vals = table_cimviselo_data.iloc[0].tolist() + [cimviselo_id]
+    cursor.execute(f"UPDATE cimviselo SET {cols} WHERE cimviselo_ID = ?", vals)
+else:
+    table_cimviselo_data.to_sql('cimviselo', conn, if_exists='append', index=False)
+    cimviselo_id = cursor.execute("SELECT last_insert_rowid()").fetchone()[0]
 
 table_management_data['cimviselo_ID'] = cimviselo_id
 table_alapadat_data['cimviselo_ID'] = cimviselo_id
