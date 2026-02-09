@@ -52,7 +52,7 @@ CREATE TABLE "alapadat" (
 	"export_ugynokseg"	INTEGER,
 	"kulfoldi_ip"	INTEGER,
 	"nemzetkozi_projekt"	INTEGER,
-	"k+f_tevekenyseg"	INTEGER,
+	"kf_tevekenyseg"	INTEGER,
 	"uj_technologia"	INTEGER,
 	"oktatas_felso"	INTEGER,
 	"kutatointezet"	INTEGER,
@@ -134,11 +134,11 @@ CREATE TABLE "management" (
 	"management_beosztas"	TEXT,
 	"management_tel"	NUMERIC,
 	"management_email"	TEXT,
-	"cimviselo_ID"	INTEGER,
 	"jognyilatkozat"	INTEGER,
 	"operativ"	INTEGER,
+	"park_ID"	INTEGER,
 	PRIMARY KEY("management_ID"),
-	FOREIGN KEY("cimviselo_ID") REFERENCES "cimviselo"("cimviselo_ID")
+	FOREIGN KEY("park_ID") REFERENCES "alapadat"("park_ID")
 );
 
 CREATE TABLE "szolg_fajta" (

@@ -3,7 +3,7 @@ import sqlite3
 
 
 excel_file = '/home/peti/Dokumentumok/gdf/kerdoiv/kerdoiv_valasz_1.ods'
-db = '/home/peti/Dokumentumok/gdf/IP'
+db = '/home/peti/Dokumentumok/gdf/adatbazis/IP'
 sheets_to_read = ['Adatok', 'Management', 'Elnyert EU-s támogatás', 'Infrastruktúra', 'Szolgáltatások']
 
 column_mapping = {
@@ -48,7 +48,7 @@ column_mapping = {
     'Részvétel nemzetközi projektekben': 'nemzetkozi_projekt',
     'Együttműködés felsőoktatási intézménnyel': 'oktatas_felso',
     'Együttműködés kutatóintézettel': 'kutatointezet',
-    'Önálló kutatási tevékenység': 'k+f_tevekenyseg',
+    'Önálló kutatási tevékenység': 'kf_tevekenyseg',
     'Piacközeli stádiumban lévő technológiák alkalmazása': 'uj_technologia',
     'Maga nyújtja (%)': 'sajat_szolg_arany',
     'Kiszervezi (%)': 'kiszervezett_szolg_arany', 
@@ -104,7 +104,7 @@ df_infrastruktura = all_data['Infrastruktúra'].rename(columns=column_mapping)
 df_szolgaltatasok = all_data['Szolgáltatások'].rename(columns=column_mapping)
 
 table_cimviselo_data = df_adatok[['cimviselo_nev', 'cimviselo_foglalkoztatott', 'cimviselo_cim', 'osszetetel_allam', 'osszetetel_onkormanyzat', 'osszetetel_belfoldi_magan', 'osszetetel_kulfoldi', 'osszetetel_egyeb',]]
-table_alapadat_data = df_adatok[['park_nev', 'ip_cimszerzes', 'tp_cimszerzes', 'park_email', 'park_telepules', 'park_utca', 'park_iranyitoszam', 'park_varmegye', 'park_hrsz', 'park_regio', 'osszterulet', 'hasznosithato_ter', 'beepitett_ter', 'hasznosithato_szabad_ter', 'hasznosithato_szabad_arany', 'parkolo', 'zoldterulet', 'berbeadott_ter_arany', 'eladott_ter_arany', 'kamara', 'klaszter', 'oktatas_kozep', 'munkaugy', 'civil', 'ip', 'onkormanyzat', 'fejlesztesi_ugynokseg', 'export_ugynokseg', 'kulfoldi_ip', 'nemzetkozi_projekt', 'oktatas_felso', 'kutatointezet', 'k+f_tevekenyseg', 'uj_technologia' , 	'sajat_szolg_arany' , 	'kiszervezett_szolg_arany']].copy()
+table_alapadat_data = df_adatok[['park_nev', 'ip_cimszerzes', 'tp_cimszerzes', 'park_email', 'park_telepules', 'park_utca', 'park_iranyitoszam', 'park_varmegye', 'park_hrsz', 'park_regio', 'osszterulet', 'hasznosithato_ter', 'beepitett_ter', 'hasznosithato_szabad_ter', 'hasznosithato_szabad_arany', 'parkolo', 'zoldterulet', 'berbeadott_ter_arany', 'eladott_ter_arany', 'kamara', 'klaszter', 'oktatas_kozep', 'munkaugy', 'civil', 'ip', 'onkormanyzat', 'fejlesztesi_ugynokseg', 'export_ugynokseg', 'kulfoldi_ip', 'nemzetkozi_projekt', 'oktatas_felso', 'kutatointezet', 'kf_tevekenyseg', 'uj_technologia' , 	'sajat_szolg_arany' , 	'kiszervezett_szolg_arany', 'park_honlap']].copy()
 table_vallalkozasok_data = df_adatok[['vallalkozasok_terulet', 'vallalkozasok_szama', 'vallalkozasok_foglalkoztatott', 'beruhazasi_ertek', 'arbevetel', 'exportarany', 'kkv_szam', 'nagyvall_szam', 'egyeb_vall_szam']].copy()
 table_infrastrukturafejlesztes_data = df_adatok[['sajat_forras', 'allami_forras', 'onkormanyzati_forras', 'EU_forras', 'bankhitel', 'tagi_kolcson', 'tokeemeles', 'egyeb_forras', 'osszes_forras']].copy()
 table_management_data = df_management[['management_nev','jognyilatkozat','operativ','management_beosztas','management_tel','management_email']]
@@ -127,45 +127,112 @@ if result:
     cols = ", ".join([f"{col} = ?" for col in table_cimviselo_data.columns])
     vals = table_cimviselo_data.iloc[0].tolist() + [cimviselo_id]
     cursor.execute(f"UPDATE cimviselo SET {cols} WHERE cimviselo_ID = ?", vals)
+    
 else:
     table_cimviselo_data.to_sql('cimviselo', conn, if_exists='append', index=False)
     cimviselo_id = cursor.execute("SELECT last_insert_rowid()").fetchone()[0]
+    
 
-table_management_data['cimviselo_ID'] = cimviselo_id
-table_alapadat_data['cimviselo_ID'] = cimviselo_id
+park_tocheck = table_alapadat_data['park_nev'].iloc[0]
+cursor.execute("SELECT park_ID FROM alapadat WHERE park_nev = ?", (park_tocheck,))
+result = cursor.fetchone()
+if result:
+    park_id = result[0]
+    cols = ", ".join([f"{col} = ?" for col in table_alapadat_data.columns])
+    cols = cols + ", cimviselo_ID = ?"
+    vals = table_alapadat_data.iloc[0].tolist() + [cimviselo_id] + [park_id]
+    cursor.execute(f"UPDATE alapadat SET {cols} WHERE park_ID = ?", vals)
+else:
+    table_alapadat_data['cimviselo_ID'] = cimviselo_id
+    table_alapadat_data.to_sql('alapadat', conn, if_exists='append', index=False)
+    park_id = cursor.execute("SELECT last_insert_rowid()").fetchone()[0]
 
-table_management_data.to_sql('management', conn, if_exists='append', index=False)
-table_alapadat_data.to_sql('alapadat', conn, if_exists='append', index=False)
-                                                                        
-park_id = cursor.execute("SELECT last_insert_rowid()").fetchone()[0]
 
-table_vallalkozasok_data['park_ID'] = park_id
-table_infrastrukturafejlesztes_data['park_ID'] = park_id
-table_EU_tamogatas_data['park_ID'] = park_id
+# törlés és újra feltöltés helyett hogyan lehet ezt frissíteni? 
+if not table_management_data.empty:
+    cursor.execute("DELETE FROM management WHERE park_ID = ?", (park_id,))
+    table_management_data['park_ID'] = park_id
+    table_management_data.to_sql('management', conn, if_exists='append', index=False)
 
-table_vallalkozasok_data.to_sql('vallalkozasok', conn, if_exists='append', index=False)
-table_infrastrukturafejlesztes_data.to_sql('infrastrukturafejlesztes', conn, if_exists='append', index=False)
-table_EU_tamogatas_data.to_sql('EU_tamogatas', conn, if_exists='append', index=False)
+                                                          
+cursor.execute("SELECT park_ID, ev FROM vallalkozasok WHERE park_ID = ? AND ev = ?", (park_id, pd.Timestamp.now().year))
+exists = cursor.fetchone()
+if exists:
+    cols = ", ".join([f"{col} = ?" for col in table_vallalkozasok_data.columns])
+    vals = table_vallalkozasok_data.iloc[0].tolist() + [park_id]
+    cursor.execute(f'UPDATE vallalkozasok SET {cols} WHERE park_ID = ?', vals)
 
+else:
+    table_vallalkozasok_data['park_ID'] = park_id
+    table_vallalkozasok_data.to_sql('vallalkozasok', conn, if_exists='append', index=False)
+
+
+cursor.execute("SELECT park_ID, ev FROM infrastrukturafejlesztes WHERE park_ID = ? AND ev = ?", (park_id, pd.Timestamp.now().year))
+exists = cursor.fetchone()
+if exists:
+    cols = ", ".join([f"{col} = ?" for col in table_infrastrukturafejlesztes_data.columns])
+    vals = table_infrastrukturafejlesztes_data.iloc[0].tolist() + [park_id]
+    cursor.execute(f'UPDATE infrastrukturafejlesztes SET {cols} WHERE park_ID = ?', vals)
+
+else:
+    table_infrastrukturafejlesztes_data['park_ID'] = park_id
+    table_infrastrukturafejlesztes_data.to_sql('infrastrukturafejlesztes', conn, if_exists='append', index=False)
+
+
+# itt lehet több sor, ha több támogatás van egy évben, akkor ezt is törölni és újra feltölteni kellene? vagy egyedi azonosító alapján lehet frissíteni?
+cursor.execute("SELECT park_ID, ev FROM EU_tamogatas WHERE park_ID = ? AND ev = ?", (park_id, pd.Timestamp.now().year))
+exists = cursor.fetchone()
+if exists:
+    cols = ", ".join([f"{col} = ?" for col in table_EU_tamogatas_data.columns])
+    vals = table_EU_tamogatas_data.iloc[0].tolist() + [park_id]
+    cursor.execute(f'UPDATE EU_tamogatas SET {cols} WHERE park_ID = ?', vals)
+
+else:
+    table_EU_tamogatas_data['park_ID'] = park_id
+    table_EU_tamogatas_data.to_sql('EU_tamogatas', conn, if_exists='append', index=False)
+
+
+#az infra_fajta adatokat csak első alkalommal kell bevinni
 #table_infra_fajta_data.to_sql('infra_fajta', conn, if_exists='append', index=False)
 
+
+#itt csak a bevitel működik, frissítés nem
 infra_fajta_df = pd.read_sql_query("SELECT * FROM infra_fajta;", conn)  
 
 merged_infra_df = pd.merge(infra_fajta_df, table_infrastruktura_data, on=['infra_tipus', 'infra_nev'],how='left')
 final_merged_infra_df = merged_infra_df[['infra_ID','kapacitas','ellatott_ter','allapot','terv_fejlesztes_ev','terv_forras',]]
 clean_infra_data_df = final_merged_infra_df.dropna(subset=['ellatott_ter', 'allapot']).copy()
-clean_infra_data_df['park_ID'] = park_id
-clean_infra_data_df.to_sql('infrastruktura', conn, if_exists='append', index=False)
+
+cursor.execute("SELECT park_ID FROM infrastruktura WHERE park_ID = ?", (park_id,))
+exists = cursor.fetchone()
+if exists:
+    cols = ", ".join([f"{col} = ?" for col in clean_infra_data_df.columns])
+    vals = clean_infra_data_df.iloc[0].tolist() + [park_id, clean_infra_data_df['infra_ID'].iloc[0]]
+    cursor.execute(f'UPDATE infrastruktura SET {cols} WHERE park_ID = ? AND infra_ID = ?', vals)
+
+else:
+    clean_infra_data_df['park_ID'] = park_id
+    clean_infra_data_df.to_sql('infrastruktura', conn, if_exists='append', index=False)
 
 #table_szolg_fajta_data.to_sql('szolg_fajta', conn, if_exists='append', index=False)
 
+
+#itt csak a bevitel működik, frissítés nem
 szolg_fajta_df = pd.read_sql_query("SELECT * FROM szolg_fajta;", conn)
 
 merged_szolg_df = pd.merge(szolg_fajta_df, table_szolgaltatasok_data, on=['szolg_tipus', 'szolg_nev'],how='left')
 final_merged_szolg_df = merged_szolg_df[['szolg_ID','szolg_tartalom','szolgaltato_fajta','szolgaltato_nev','szolg_kezdet',]]
 clean_szolg_data_df = final_merged_szolg_df.dropna(subset=['szolgaltato_fajta']).copy()
-clean_szolg_data_df['park_ID'] = park_id
-clean_szolg_data_df.to_sql('szolgaltatas', conn, if_exists='append', index=False)
+cursor.execute("SELECT park_ID FROM szolgaltatas WHERE park_ID = ?", (park_id,))
+exists = cursor.fetchone()
+if exists:
+    cols = ", ".join([f"{col} = ?" for col in clean_szolg_data_df.columns])
+    vals = clean_szolg_data_df.iloc[0].tolist() + [park_id, clean_szolg_data_df['szolg_ID'].iloc[0]]
+    cursor.execute(f'UPDATE szolgaltatas SET {cols} WHERE park_ID = ? AND szolg_ID = ?', vals)
+
+else:
+    clean_szolg_data_df['park_ID'] = park_id
+    clean_szolg_data_df.to_sql('szolgaltatas', conn, if_exists='append', index=False)
 
 conn.commit()
 conn.close()
