@@ -5,6 +5,8 @@ CREATE TABLE "EU_tamogatas" (
 	"tamogatas_tartalom"	TEXT,
 	"intenzitas"	INTEGER,
 	"EU_osszkoltseg"	INTEGER,
+	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY("park_ID","ev","tamogatas_tartalom", "datum"),
 	FOREIGN KEY("park_ID") REFERENCES "alapadat"("park_ID")
 );
 
@@ -56,9 +58,10 @@ CREATE TABLE "alapadat" (
 	"uj_technologia"	INTEGER,
 	"oktatas_felso"	INTEGER,
 	"kutatointezet"	INTEGER,
-	"cimviselo_ID"	INTEGER,
 	"park_honlap"	TEXT,
-	PRIMARY KEY("park_ID"),
+	"cimviselo_ID"	INTEGER,
+	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY("park_ID", "datum"),
 	FOREIGN KEY("cimviselo_ID") REFERENCES "cimviselo"("cimviselo_ID")
 );
 
@@ -72,7 +75,8 @@ CREATE TABLE "cimviselo" (
 	"osszetetel_kulfoldi"	NUMERIC,
 	"cimviselo_cim"	TEXT,
 	"osszetetel_egyeb"	NUMERIC,
-	PRIMARY KEY("cimviselo_ID")
+	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY("cimviselo_ID","datum")
 );
 
 CREATE TABLE "igenyelt_tamogatas" (
@@ -101,6 +105,7 @@ CREATE TABLE "infrastruktura" (
 	"allapot"	TEXT,
 	"terv_fejlesztes_ev"	INTEGER,
 	"terv_forras"	TEXT,
+	"datum"	TEXT DEFAULT CURRENT_DATE,
 	PRIMARY KEY("park_ID","infra_ID"),
 	FOREIGN KEY("infra_ID") REFERENCES "infra_fajta"("infra_ID"),
 	FOREIGN KEY("park_ID") REFERENCES "alapadat"("park_ID")
@@ -118,7 +123,8 @@ CREATE TABLE "infrastrukturafejlesztes" (
 	"tokeemeles"	INTEGER,
 	"egyeb_forras"	INTEGER,
 	"osszes_forras"	INTEGER,
-	PRIMARY KEY("ev","park_ID"),
+	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY("ev","park_ID","datum"),
 	FOREIGN KEY("park_ID") REFERENCES "alapadat"("park_ID")
 );
 
@@ -129,7 +135,6 @@ CREATE TABLE "kutatointezet" (
 );
 
 CREATE TABLE "management" (
-	"management_ID"	INTEGER NOT NULL,
 	"management_nev"	TEXT NOT NULL,
 	"management_beosztas"	TEXT,
 	"management_tel"	NUMERIC,
@@ -137,7 +142,8 @@ CREATE TABLE "management" (
 	"jognyilatkozat"	INTEGER,
 	"operativ"	INTEGER,
 	"park_ID"	INTEGER,
-	PRIMARY KEY("management_ID"),
+	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY("park_ID","datum", "management_email"),
 	FOREIGN KEY("park_ID") REFERENCES "alapadat"("park_ID")
 );
 
@@ -155,6 +161,7 @@ CREATE TABLE "szolgaltatas" (
 	"szolgaltato_fajta"	TEXT,
 	"szolgaltato_nev"	TEXT,
 	"szolg_kezdet"	INTEGER,
+	"datum"	TEXT DEFAULT CURRENT_DATE,
 	PRIMARY KEY("park_ID","szolg_ID"),
 	FOREIGN KEY("park_ID") REFERENCES "alapadat"("park_ID"),
 	FOREIGN KEY("szolg_ID") REFERENCES "szolg_fajta"("szolg_ID")
@@ -172,6 +179,7 @@ CREATE TABLE "vallalkozasok" (
 	"kkv_szam"	NUMERIC,
 	"nagyvall_szam"	NUMERIC,
 	"egyeb_vall_szam"	NUMERIC,
-	PRIMARY KEY("park_ID","ev"),
+	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY("park_ID","ev", "datum"),
 	FOREIGN KEY("park_ID") REFERENCES "alapadat"("park_ID")
 );
