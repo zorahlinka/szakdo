@@ -10,7 +10,7 @@ CREATE TABLE "EU_tamogatas" (
 	FOREIGN KEY("park_ID") REFERENCES "alapadat"("park_ID")
 );
 
-CREATE TABLE "K+F_kapcsolat" (
+CREATE TABLE "KF_kapcsolat" (
 	"park_ID"	INTEGER NOT NULL,
 	"kutatoint_ID"	INTEGER NOT NULL,
 	"kezdet"	INTEGER NOT NULL,
@@ -105,8 +105,8 @@ CREATE TABLE "infrastruktura" (
 	"allapot"	TEXT,
 	"terv_fejlesztes_ev"	INTEGER,
 	"terv_forras"	TEXT,
-	"datum"	TEXT DEFAULT CURRENT_DATE,
-	PRIMARY KEY("park_ID","infra_ID"),
+	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY("park_ID","infra_ID", "datum"),
 	FOREIGN KEY("infra_ID") REFERENCES "infra_fajta"("infra_ID"),
 	FOREIGN KEY("park_ID") REFERENCES "alapadat"("park_ID")
 );
@@ -161,8 +161,8 @@ CREATE TABLE "szolgaltatas" (
 	"szolgaltato_fajta"	TEXT,
 	"szolgaltato_nev"	TEXT,
 	"szolg_kezdet"	INTEGER,
-	"datum"	TEXT DEFAULT CURRENT_DATE,
-	PRIMARY KEY("park_ID","szolg_ID"),
+	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY("park_ID","szolg_ID", "datum"),
 	FOREIGN KEY("park_ID") REFERENCES "alapadat"("park_ID"),
 	FOREIGN KEY("szolg_ID") REFERENCES "szolg_fajta"("szolg_ID")
 );

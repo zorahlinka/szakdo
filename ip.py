@@ -127,8 +127,10 @@ if result:
     table_cimviselo_data['cimviselo_ID'] = cimviselo_id
     table_cimviselo_data.to_sql('cimviselo', conn, if_exists='append', index=False)
 else:
+    new_cimviselo_id = cursor.execute("SELECT IFNULL(MAX(cimviselo_ID), 0) + 1 FROM cimviselo").fetchone()[0]
+    table_cimviselo_data['cimviselo_ID'] = new_cimviselo_id
     table_cimviselo_data.to_sql('cimviselo', conn, if_exists='append', index=False)
-    cimviselo_id = cursor.execute("SELECT last_insert_rowid()").fetchone()[0]
+    cimviselo_id = new_cimviselo_id
     
 
 park_tocheck = table_alapadat_data['park_nev'].iloc[0]
@@ -138,11 +140,13 @@ if result:
     park_id = result[0]
     table_alapadat_data['cimviselo_ID'] = cimviselo_id
     table_alapadat_data['park_ID'] = park_id
-    table_alapadat_data.to_sql('alapadat', conn, if_exists='replace', index=False)
+    table_alapadat_data.to_sql('alapadat', conn, if_exists='append', index=False)
 else:
     table_alapadat_data['cimviselo_ID'] = cimviselo_id
+    new_park_id = cursor.execute("SELECT IFNULL(MAX(park_ID), 0) + 1 FROM alapadat").fetchone()[0]
+    table_alapadat_data['park_ID'] = new_park_id
     table_alapadat_data.to_sql('alapadat', conn, if_exists='append', index=False)
-    park_id = cursor.execute("SELECT last_insert_rowid()").fetchone()[0]
+    park_id = new_park_id
 
 
 table_management_data['park_ID'] = park_id
@@ -169,6 +173,7 @@ clean_infra_data_df = final_merged_infra_df.dropna(subset=['ellatott_ter', 'alla
 clean_infra_data_df['park_ID'] = park_id
 clean_infra_data_df.to_sql('infrastruktura', conn, if_exists='append', index=False)
 
+#a szolg_fajta adatokat csak első alkalommal kell bevinni
 #table_szolg_fajta_data.to_sql('szolg_fajta', conn, if_exists='append', index=False)
 
 szolg_fajta_df = pd.read_sql_query("SELECT * FROM szolg_fajta;", conn)
