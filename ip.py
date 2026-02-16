@@ -113,6 +113,7 @@ table_infra_fajta_data = df_infrastruktura[['infra_tipus','infra_nev']].copy()
 table_infrastruktura_data = df_infrastruktura[['infra_tipus','infra_nev','kapacitas','ellatott_ter','allapot','terv_fejlesztes_ev','terv_forras']].copy()
 table_szolg_fajta_data = df_szolgaltatasok[['szolg_tipus','szolg_nev']].copy()
 table_szolgaltatasok_data = df_szolgaltatasok[['szolg_tipus','szolg_nev','szolg_tartalom','szolgaltato_fajta','szolgaltato_nev','szolg_kezdet']].copy()
+table_helyrajzi_szam_data = (df_adatok['park_hrsz'].astype(str).str.split(',').explode().str.strip().to_frame(name='park_hrsz').copy())
 
 conn = sqlite3.connect(db)
 cursor = conn.cursor()
@@ -160,6 +161,9 @@ table_infrastrukturafejlesztes_data.to_sql('infrastrukturafejlesztes', conn, if_
 
 table_EU_tamogatas_data['park_ID'] = park_id
 table_EU_tamogatas_data.to_sql('EU_tamogatas', conn, if_exists='append', index=False)
+
+table_helyrajzi_szam_data['park_ID'] = park_id
+table_helyrajzi_szam_data.to_sql('helyrajzi_szam', conn, if_exists='append', index=False)
 
 
 #az infra_fajta adatokat csak első alkalommal kell bevinni

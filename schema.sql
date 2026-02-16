@@ -183,3 +183,11 @@ CREATE TABLE "vallalkozasok" (
 	PRIMARY KEY("park_ID","ev", "datum"),
 	FOREIGN KEY("park_ID") REFERENCES "alapadat"("park_ID")
 );
+
+CREATE TABLE "helyrajzi_szam" (
+	"park_ID"	INTEGER,
+	"park_hrsz"	TEXT,
+	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY("park_ID","park_hrsz","datum"),
+	FOREIGN KEY("park_ID") REFERENCES "alapadat"("park_ID")
+);
