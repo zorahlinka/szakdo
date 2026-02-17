@@ -61,6 +61,7 @@ column_mapping = {
     'KKV-k száma': 'kkv_szam', 
     'Nagyvállalatok száma': 'nagyvall_szam', 
     'Egyéb vállalkozások száma': 'egyeb_vall_szam',
+    'Mely évre vonatkoznak az adatok?': 'vallalkozasok_ev',
     'Saját forrás (millió Ft)': 'sajat_forras',
     'Állami támogatás (millió Ft)': 'allami_forras',
     'Önkormányzati támogatás (millió Ft)': 'onkormanyzati_forras',
@@ -70,6 +71,7 @@ column_mapping = {
     'Tőkeemelés (millió Ft)': 'tokeemeles',
     'Egyéb (millió Ft)': 'egyeb_forras',
     'ÖSSZES forrás (millió Ft)': 'osszes_forras',
+    'Felhasználás éve': 'felhasznalas_ev',
     'Felelős neve': 'management_nev',
     'Jognyilatkozatra jogosult': 'jognyilatkozat',
     'Operatív felelős': 'operativ',
@@ -77,6 +79,7 @@ column_mapping = {
     'Telefon': 'management_tel',
     'Felelős e-mail': 'management_email',
     'Operatív program': 'op',
+    'Odaítélés éve': 'tamogatas_ev',
     'Projekt tartalom': 'tamogatas_tartalom',
     'Támogatási intenzitás': 'intenzitas',
     'Összköltség (millió Ft)': 'EU_osszkoltseg',
@@ -95,6 +98,12 @@ column_mapping = {
     'Szolgáltatás kezdete': 'szolg_kezdet',
 }
 
+allapot_map = {
+    'Megfelelő': '1',
+    'Bővítendő': '2',
+    'Felújítandó': '3'
+}
+
 all_data= pd.read_excel(excel_file, engine='odf', sheet_name=sheets_to_read, skiprows=1)
 
 df_adatok = all_data['Adatok'].rename(columns=column_mapping)
@@ -103,12 +112,14 @@ df_EU_tamogatas = all_data['Elnyert EU-s támogatás'].rename(columns=column_map
 df_infrastruktura = all_data['Infrastruktúra'].rename(columns=column_mapping)
 df_szolgaltatasok = all_data['Szolgáltatások'].rename(columns=column_mapping)
 
+df_infrastruktura['allapot'] = df_infrastruktura['allapot'].map(allapot_map)
+
 table_cimviselo_data = df_adatok[['cimviselo_nev', 'cimviselo_foglalkoztatott', 'cimviselo_cim', 'osszetetel_allam', 'osszetetel_onkormanyzat', 'osszetetel_belfoldi_magan', 'osszetetel_kulfoldi', 'osszetetel_egyeb',]].copy()
 table_alapadat_data = df_adatok[['park_nev', 'ip_cimszerzes', 'tp_cimszerzes', 'park_email', 'park_telepules', 'park_utca', 'park_iranyitoszam', 'park_varmegye', 'park_hrsz', 'park_regio', 'osszterulet', 'hasznosithato_ter', 'beepitett_ter', 'hasznosithato_szabad_ter', 'hasznosithato_szabad_arany', 'parkolo', 'zoldterulet', 'berbeadott_ter_arany', 'eladott_ter_arany', 'kamara', 'klaszter', 'oktatas_kozep', 'munkaugy', 'civil', 'ip', 'onkormanyzat', 'fejlesztesi_ugynokseg', 'export_ugynokseg', 'kulfoldi_ip', 'nemzetkozi_projekt', 'oktatas_felso', 'kutatointezet', 'kf_tevekenyseg', 'uj_technologia' , 	'sajat_szolg_arany' , 	'kiszervezett_szolg_arany', 'park_honlap']].copy()
-table_vallalkozasok_data = df_adatok[['vallalkozasok_terulet', 'vallalkozasok_szama', 'vallalkozasok_foglalkoztatott', 'beruhazasi_ertek', 'arbevetel', 'exportarany', 'kkv_szam', 'nagyvall_szam', 'egyeb_vall_szam']].copy()
-table_infrastrukturafejlesztes_data = df_adatok[['sajat_forras', 'allami_forras', 'onkormanyzati_forras', 'EU_forras', 'bankhitel', 'tagi_kolcson', 'tokeemeles', 'egyeb_forras', 'osszes_forras']].copy()
+table_vallalkozasok_data = df_adatok[['vallalkozasok_terulet', 'vallalkozasok_szama', 'vallalkozasok_foglalkoztatott', 'beruhazasi_ertek', 'arbevetel', 'exportarany', 'kkv_szam', 'nagyvall_szam', 'egyeb_vall_szam','vallalkozasok_ev']].copy()
+table_infrastrukturafejlesztes_data = df_adatok[['sajat_forras', 'allami_forras', 'onkormanyzati_forras', 'EU_forras', 'bankhitel', 'tagi_kolcson', 'tokeemeles', 'egyeb_forras', 'osszes_forras', 'felhasznalas_ev']].copy()
 table_management_data = df_management[['management_nev','jognyilatkozat','operativ','management_beosztas','management_tel','management_email']].copy()
-table_EU_tamogatas_data = df_EU_tamogatas[['op','tamogatas_tartalom','intenzitas','EU_osszkoltseg']].copy()
+table_EU_tamogatas_data = df_EU_tamogatas[['op','tamogatas_ev','tamogatas_tartalom','intenzitas','EU_osszkoltseg']].copy()
 table_infra_fajta_data = df_infrastruktura[['infra_tipus','infra_nev']].copy()
 table_infrastruktura_data = df_infrastruktura[['infra_tipus','infra_nev','kapacitas','ellatott_ter','allapot','terv_fejlesztes_ev','terv_forras']].copy()
 table_szolg_fajta_data = df_szolgaltatasok[['szolg_tipus','szolg_nev']].copy()

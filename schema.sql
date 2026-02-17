@@ -1,12 +1,12 @@
 CREATE TABLE "EU_tamogatas" (
 	"park_ID"	INTEGER,
-	"ev"	INTEGER DEFAULT (strftime('%Y', 'now')),
+	"tamogatas_ev"	INTEGER
 	"op"	TEXT,
 	"tamogatas_tartalom"	TEXT,
 	"intenzitas"	INTEGER,
 	"EU_osszkoltseg"	INTEGER,
 	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
-	PRIMARY KEY("park_ID","ev","tamogatas_tartalom", "datum"),
+	PRIMARY KEY("park_ID","tamogatas_ev","tamogatas_tartalom", "datum"),
 	FOREIGN KEY("park_ID") REFERENCES "alapadat"("park_ID")
 );
 
@@ -113,7 +113,7 @@ CREATE TABLE "infrastruktura" (
 
 CREATE TABLE "infrastrukturafejlesztes" (
 	"park_ID"	INTEGER,
-	"ev"	INTEGER DEFAULT (strftime('%Y', 'now')),
+	"felhasznalas_ev"	INTEGER,
 	"sajat_forras"	INTEGER,
 	"allami_forras"	INTEGER,
 	"onkormanyzati_forras"	INTEGER,
@@ -124,7 +124,7 @@ CREATE TABLE "infrastrukturafejlesztes" (
 	"egyeb_forras"	INTEGER,
 	"osszes_forras"	INTEGER,
 	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
-	PRIMARY KEY("ev","park_ID","datum"),
+	PRIMARY KEY("felhasznalas_ev","park_ID","datum"),
 	FOREIGN KEY("park_ID") REFERENCES "alapadat"("park_ID")
 );
 
@@ -169,7 +169,7 @@ CREATE TABLE "szolgaltatas" (
 
 CREATE TABLE "vallalkozasok" (
 	"park_ID"	INTEGER,
-	"ev"	INTEGER DEFAULT (strftime('%Y', 'now')),
+	"vallalkozasok_ev"	INTEGER,
 	"vallalkozasok_terulet"	INTEGER,
 	"vallalkozasok_szama"	INTEGER,
 	"vallalkozasok_foglalkoztatott"	NUMERIC,
@@ -180,7 +180,7 @@ CREATE TABLE "vallalkozasok" (
 	"nagyvall_szam"	NUMERIC,
 	"egyeb_vall_szam"	NUMERIC,
 	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
-	PRIMARY KEY("park_ID","ev", "datum"),
+	PRIMARY KEY("park_ID","vallalkozasok_ev","datum"),
 	FOREIGN KEY("park_ID") REFERENCES "alapadat"("park_ID")
 );
 
