@@ -104,100 +104,129 @@ allapot_map = {
     'Felújítandó': '3'
 }
 
-all_data= pd.read_excel(excel_file, engine='odf', sheet_name=sheets_to_read, skiprows=1)
+# a try-except legyen függvény, return értékekkel?
 
-df_adatok = all_data['Adatok'].rename(columns=column_mapping)
-df_management = all_data['Management'].rename(columns=column_mapping)
-df_EU_tamogatas = all_data['Elnyert EU-s támogatás'].rename(columns=column_mapping)
-df_infrastruktura = all_data['Infrastruktúra'].rename(columns=column_mapping)
-df_szolgaltatasok = all_data['Szolgáltatások'].rename(columns=column_mapping)
+def read_excel(excel_file, sheets_to_read):
+    try:   
+        all_data = pd.read_excel(excel_file, engine='odf', sheet_name=sheets_to_read, skiprows=1)
+        return all_data
+    except Exception as e:
+        print(f"Hiba történt az Excel fájl beolvasása során: {e}")
+        return None 
 
-df_infrastruktura['allapot'] = df_infrastruktura['allapot'].map(allapot_map)
+#def data_validation(all_data):
+    #try:   
+    #Exception as e:
+        #print(f"Hiba az adatellenőrzés során: {e}")
 
-table_cimviselo_data = df_adatok[['cimviselo_nev', 'cimviselo_foglalkoztatott', 'cimviselo_cim', 'osszetetel_allam', 'osszetetel_onkormanyzat', 'osszetetel_belfoldi_magan', 'osszetetel_kulfoldi', 'osszetetel_egyeb',]].copy()
-table_alapadat_data = df_adatok[['park_nev', 'ip_cimszerzes', 'tp_cimszerzes', 'park_email', 'park_telepules', 'park_utca', 'park_iranyitoszam', 'park_varmegye', 'park_hrsz', 'park_regio', 'osszterulet', 'hasznosithato_ter', 'beepitett_ter', 'hasznosithato_szabad_ter', 'hasznosithato_szabad_arany', 'parkolo', 'zoldterulet', 'berbeadott_ter_arany', 'eladott_ter_arany', 'kamara', 'klaszter', 'oktatas_kozep', 'munkaugy', 'civil', 'ip', 'onkormanyzat', 'fejlesztesi_ugynokseg', 'export_ugynokseg', 'kulfoldi_ip', 'nemzetkozi_projekt', 'oktatas_felso', 'kutatointezet', 'kf_tevekenyseg', 'uj_technologia' , 	'sajat_szolg_arany' , 	'kiszervezett_szolg_arany', 'park_honlap']].copy()
-table_vallalkozasok_data = df_adatok[['vallalkozasok_terulet', 'vallalkozasok_szama', 'vallalkozasok_foglalkoztatott', 'beruhazasi_ertek', 'arbevetel', 'exportarany', 'kkv_szam', 'nagyvall_szam', 'egyeb_vall_szam','vallalkozasok_ev']].copy()
-table_infrastrukturafejlesztes_data = df_adatok[['sajat_forras', 'allami_forras', 'onkormanyzati_forras', 'EU_forras', 'bankhitel', 'tagi_kolcson', 'tokeemeles', 'egyeb_forras', 'osszes_forras', 'felhasznalas_ev']].copy()
-table_management_data = df_management[['management_nev','jognyilatkozat','operativ','management_beosztas','management_tel','management_email']].copy()
-table_EU_tamogatas_data = df_EU_tamogatas[['op','tamogatas_ev','tamogatas_tartalom','intenzitas','EU_osszkoltseg']].copy()
-table_infra_fajta_data = df_infrastruktura[['infra_tipus','infra_nev']].copy()
-table_infrastruktura_data = df_infrastruktura[['infra_tipus','infra_nev','kapacitas','ellatott_ter','allapot','terv_fejlesztes_ev','terv_forras']].copy()
-table_szolg_fajta_data = df_szolgaltatasok[['szolg_tipus','szolg_nev']].copy()
-table_szolgaltatasok_data = df_szolgaltatasok[['szolg_tipus','szolg_nev','szolg_tartalom','szolgaltato_fajta','szolgaltato_nev','szolg_kezdet']].copy()
-table_helyrajzi_szam_data = (df_adatok['park_hrsz'].astype(str).str.split(',').explode().str.strip().to_frame(name='park_hrsz').copy())
 
-conn = sqlite3.connect(db)
-cursor = conn.cursor()
+def transform_data(all_data, column_mapping, allapot_map):  
+    try:   
+        df_adatok = all_data['Adatok'].rename(columns=column_mapping)
+        df_management = all_data['Management'].rename(columns=column_mapping)
+        df_EU_tamogatas = all_data['Elnyert EU-s támogatás'].rename(columns=column_mapping)
+        df_infrastruktura = all_data['Infrastruktúra'].rename(columns=column_mapping)
+        df_szolgaltatasok = all_data['Szolgáltatások'].rename(columns=column_mapping)
 
-#cursor.execute("PRAGMA foreign_keys = ON;")
+        df_infrastruktura['allapot'] = df_infrastruktura['allapot'].map(allapot_map)
 
-cimviselo_tocheck = table_cimviselo_data['cimviselo_nev'].iloc[0]
-cursor.execute("SELECT DISTINCT cimviselo_ID FROM cimviselo WHERE cimviselo_nev = ?", (cimviselo_tocheck,))
-result = cursor.fetchone()
-if result:
-    cimviselo_id = result[0]
-    table_cimviselo_data['cimviselo_ID'] = cimviselo_id
-    table_cimviselo_data.to_sql('cimviselo', conn, if_exists='append', index=False)
-else:
-    new_cimviselo_id = cursor.execute("SELECT IFNULL(MAX(cimviselo_ID), 0) + 1 FROM cimviselo").fetchone()[0]
-    table_cimviselo_data['cimviselo_ID'] = new_cimviselo_id
-    table_cimviselo_data.to_sql('cimviselo', conn, if_exists='append', index=False)
-    cimviselo_id = new_cimviselo_id
+        table_cimviselo_data = df_adatok[['cimviselo_nev', 'cimviselo_foglalkoztatott', 'cimviselo_cim', 'osszetetel_allam', 'osszetetel_onkormanyzat', 'osszetetel_belfoldi_magan', 'osszetetel_kulfoldi', 'osszetetel_egyeb',]].copy()
+        table_alapadat_data = df_adatok[['park_nev', 'ip_cimszerzes', 'tp_cimszerzes', 'park_email', 'park_telepules', 'park_utca', 'park_iranyitoszam', 'park_varmegye', 'park_hrsz', 'park_regio', 'osszterulet', 'hasznosithato_ter', 'beepitett_ter', 'hasznosithato_szabad_ter', 'hasznosithato_szabad_arany', 'parkolo', 'zoldterulet', 'berbeadott_ter_arany', 'eladott_ter_arany', 'kamara', 'klaszter', 'oktatas_kozep', 'munkaugy', 'civil', 'ip', 'onkormanyzat', 'fejlesztesi_ugynokseg', 'export_ugynokseg', 'kulfoldi_ip', 'nemzetkozi_projekt', 'oktatas_felso', 'kutatointezet', 'kf_tevekenyseg', 'uj_technologia' , 	'sajat_szolg_arany' , 	'kiszervezett_szolg_arany', 'park_honlap']].copy()
+        table_vallalkozasok_data = df_adatok[['vallalkozasok_terulet', 'vallalkozasok_szama', 'vallalkozasok_foglalkoztatott', 'beruhazasi_ertek', 'arbevetel', 'exportarany', 'kkv_szam', 'nagyvall_szam', 'egyeb_vall_szam','vallalkozasok_ev']].copy()
+        table_infrastrukturafejlesztes_data = df_adatok[['sajat_forras', 'allami_forras', 'onkormanyzati_forras', 'EU_forras', 'bankhitel', 'tagi_kolcson', 'tokeemeles', 'egyeb_forras', 'osszes_forras', 'felhasznalas_ev']].copy()
+        table_management_data = df_management[['management_nev','jognyilatkozat','operativ','management_beosztas','management_tel','management_email']].copy()
+        table_EU_tamogatas_data = df_EU_tamogatas[['op','tamogatas_ev','tamogatas_tartalom','intenzitas','EU_osszkoltseg']].copy()
+        table_infra_fajta_data = df_infrastruktura[['infra_tipus','infra_nev']].copy()
+        table_infrastruktura_data = df_infrastruktura[['infra_tipus','infra_nev','kapacitas','ellatott_ter','allapot','terv_fejlesztes_ev','terv_forras']].copy()
+        table_szolg_fajta_data = df_szolgaltatasok[['szolg_tipus','szolg_nev']].copy()
+        table_szolgaltatasok_data = df_szolgaltatasok[['szolg_tipus','szolg_nev','szolg_tartalom','szolgaltato_fajta','szolgaltato_nev','szolg_kezdet']].copy()
+        table_helyrajzi_szam_data = (df_adatok['park_hrsz'].astype(str).str.split(',').explode().str.strip().to_frame(name='park_hrsz').copy())
+        return table_cimviselo_data, table_alapadat_data, table_vallalkozasok_data, table_infrastrukturafejlesztes_data, table_management_data, table_EU_tamogatas_data, table_infra_fajta_data, table_infrastruktura_data, table_szolg_fajta_data, table_szolgaltatasok_data, table_helyrajzi_szam_data
+    except Exception as e:
+        print(f"Hiba történt az átalakítás során: {e}") 
+
+def write_to_db(db, table_cimviselo_data, table_alapadat_data, table_vallalkozasok_data, table_infrastrukturafejlesztes_data, table_management_data, table_EU_tamogatas_data, table_infra_fajta_data, table_infrastruktura_data, table_szolg_fajta_data, table_szolgaltatasok_data, table_helyrajzi_szam_data):
+    conn = sqlite3.connect(db)
+    cursor = conn.cursor()
+
+    try:
+        with conn:
+            cimviselo_tocheck = table_cimviselo_data['cimviselo_nev'].iloc[0]
+            cursor.execute("SELECT DISTINCT cimviselo_ID FROM cimviselo WHERE cimviselo_nev = ?", (cimviselo_tocheck,))
+            result = cursor.fetchone()
+            if result:
+                cimviselo_id = result[0]
+                table_cimviselo_data['cimviselo_ID'] = cimviselo_id
+                table_cimviselo_data.to_sql('cimviselo', conn, if_exists='append', index=False)
+            else:
+                new_cimviselo_id = cursor.execute("SELECT IFNULL(MAX(cimviselo_ID), 0) + 1 FROM cimviselo").fetchone()[0]
+                table_cimviselo_data['cimviselo_ID'] = new_cimviselo_id
+                table_cimviselo_data.to_sql('cimviselo', conn, if_exists='append', index=False)
+                cimviselo_id = new_cimviselo_id
     
 
-park_tocheck = table_alapadat_data['park_nev'].iloc[0]
-cursor.execute("SELECT DISTINCT park_ID FROM alapadat WHERE park_nev = ?", (park_tocheck,))
-result = cursor.fetchone()
-if result:
-    park_id = result[0]
-    table_alapadat_data['cimviselo_ID'] = cimviselo_id
-    table_alapadat_data['park_ID'] = park_id
-    table_alapadat_data.to_sql('alapadat', conn, if_exists='append', index=False)
-else:
-    table_alapadat_data['cimviselo_ID'] = cimviselo_id
-    new_park_id = cursor.execute("SELECT IFNULL(MAX(park_ID), 0) + 1 FROM alapadat").fetchone()[0]
-    table_alapadat_data['park_ID'] = new_park_id
-    table_alapadat_data.to_sql('alapadat', conn, if_exists='append', index=False)
-    park_id = new_park_id
+            park_tocheck = table_alapadat_data['park_nev'].iloc[0]
+            cursor.execute("SELECT DISTINCT park_ID FROM alapadat WHERE park_nev = ?", (park_tocheck,))
+            result = cursor.fetchone()
+            if result:
+                park_id = result[0]
+                table_alapadat_data['cimviselo_ID'] = cimviselo_id
+                table_alapadat_data['park_ID'] = park_id
+                table_alapadat_data.to_sql('alapadat', conn, if_exists='append', index=False)
+            else:
+                table_alapadat_data['cimviselo_ID'] = cimviselo_id
+                new_park_id = cursor.execute("SELECT IFNULL(MAX(park_ID), 0) + 1 FROM alapadat").fetchone()[0]
+                table_alapadat_data['park_ID'] = new_park_id
+                table_alapadat_data.to_sql('alapadat', conn, if_exists='append', index=False)
+                park_id = new_park_id
 
 
-table_management_data['park_ID'] = park_id
-table_management_data.to_sql('management', conn, if_exists='append', index=False)
+            table_management_data['park_ID'] = park_id
+            table_management_data.to_sql('management', conn, if_exists='append', index=False)
 
-table_vallalkozasok_data['park_ID'] = park_id
-table_vallalkozasok_data.to_sql('vallalkozasok', conn, if_exists='append', index=False)
+            table_vallalkozasok_data['park_ID'] = park_id
+            table_vallalkozasok_data.to_sql('vallalkozasok', conn, if_exists='append', index=False)
 
-table_infrastrukturafejlesztes_data['park_ID'] = park_id
-table_infrastrukturafejlesztes_data.to_sql('infrastrukturafejlesztes', conn, if_exists='append', index=False)
+            table_infrastrukturafejlesztes_data['park_ID'] = park_id
+            table_infrastrukturafejlesztes_data.to_sql('infrastrukturafejlesztes', conn, if_exists='append', index=False)
 
-table_EU_tamogatas_data['park_ID'] = park_id
-table_EU_tamogatas_data.to_sql('EU_tamogatas', conn, if_exists='append', index=False)
-
-table_helyrajzi_szam_data['park_ID'] = park_id
-table_helyrajzi_szam_data.to_sql('helyrajzi_szam', conn, if_exists='append', index=False)
+            table_EU_tamogatas_data['park_ID'] = park_id
+            table_EU_tamogatas_data.to_sql('EU_tamogatas', conn, if_exists='append', index=False)   
+        
+            table_helyrajzi_szam_data['park_ID'] = park_id
+            table_helyrajzi_szam_data.to_sql('helyrajzi_szam', conn, if_exists='append', index=False)
 
 
 #az infra_fajta adatokat csak első alkalommal kell bevinni
-#table_infra_fajta_data.to_sql('infra_fajta', conn, if_exists='append', index=False)
+            #table_infra_fajta_data.to_sql('infra_fajta', conn, if_exists='append', index=False)
 
-infra_fajta_df = pd.read_sql_query("SELECT * FROM infra_fajta;", conn)  
+            infra_fajta_df = pd.read_sql_query("SELECT * FROM infra_fajta;", conn)  
 
-merged_infra_df = pd.merge(infra_fajta_df, table_infrastruktura_data, on=['infra_tipus', 'infra_nev'],how='left')
-final_merged_infra_df = merged_infra_df[['infra_ID','kapacitas','ellatott_ter','allapot','terv_fejlesztes_ev','terv_forras',]]
-clean_infra_data_df = final_merged_infra_df.dropna(subset=['ellatott_ter', 'allapot']).copy()
-clean_infra_data_df['park_ID'] = park_id
-clean_infra_data_df.to_sql('infrastruktura', conn, if_exists='append', index=False)
+            merged_infra_df = pd.merge(infra_fajta_df, table_infrastruktura_data, on=['infra_tipus', 'infra_nev'],how='left')
+            final_merged_infra_df = merged_infra_df[['infra_ID','kapacitas','ellatott_ter','allapot','terv_fejlesztes_ev','terv_forras',]]
+            clean_infra_data_df = final_merged_infra_df.dropna(subset=['ellatott_ter', 'allapot']).copy()
+            clean_infra_data_df['park_ID'] = park_id
+            clean_infra_data_df.to_sql('infrastruktura', conn, if_exists='append', index=False)
 
 #a szolg_fajta adatokat csak első alkalommal kell bevinni
-#table_szolg_fajta_data.to_sql('szolg_fajta', conn, if_exists='append', index=False)
+            #table_szolg_fajta_data.to_sql('szolg_fajta', conn, if_exists='append', index=False)
 
-szolg_fajta_df = pd.read_sql_query("SELECT * FROM szolg_fajta;", conn)
+            szolg_fajta_df = pd.read_sql_query("SELECT * FROM szolg_fajta;", conn)
 
-merged_szolg_df = pd.merge(szolg_fajta_df, table_szolgaltatasok_data, on=['szolg_tipus', 'szolg_nev'],how='left')
-final_merged_szolg_df = merged_szolg_df[['szolg_ID','szolg_tartalom','szolgaltato_fajta','szolgaltato_nev','szolg_kezdet',]]
-clean_szolg_data_df = final_merged_szolg_df.dropna(subset=['szolgaltato_fajta']).copy()
-clean_szolg_data_df['park_ID'] = park_id
-clean_szolg_data_df.to_sql('szolgaltatas', conn, if_exists='append', index=False)
+            merged_szolg_df = pd.merge(szolg_fajta_df, table_szolgaltatasok_data, on=['szolg_tipus', 'szolg_nev'],how='left')
+            final_merged_szolg_df = merged_szolg_df[['szolg_ID','szolg_tartalom','szolgaltato_fajta','szolgaltato_nev','szolg_kezdet',]]
+            clean_szolg_data_df = final_merged_szolg_df.dropna(subset=['szolgaltato_fajta']).copy()
+            clean_szolg_data_df['park_ID'] = park_id
+            clean_szolg_data_df.to_sql('szolgaltatas', conn, if_exists='append', index=False)   
 
-conn.commit()
-conn.close()
+        print("Adatok sikeresen feltöltve az adatbázisba.")
+
+    except Exception as e:
+        print(f"Hiba történt az adatbázis művelet során: {e}")  
+
+    finally:
+        conn.close()    
+
+if all_data := read_excel(excel_file, sheets_to_read):
+    if transformed_data := transform_data(all_data, column_mapping, allapot_map):
+        write_to_db(db, *transformed_data)
