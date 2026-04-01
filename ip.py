@@ -115,7 +115,7 @@ allapot = ['Megfelelő', 'Bővítendő', 'Felújítandó']
 
 # adatellenőrzéshez szükséges szabályok oszlopok szerint:
 val_rules = {
-    "text_255": ['text', 'length:255'],
+    "text_255": ["Ipari Park neve", "Címviselő szervezet neve", "Címviselő szervezet címe", "Település", "Út/utca", 'Felelős neve', 'Beosztása', 'Operatív program', 'Projekt tartalom', 'Infrastruktúra típusa', 'Infrastruktúra neve', 'Szolgáltatás típusa', 'Szolgáltatás neve', 'Szolgáltatás tartalma', 'Szolgáltató szervezet neve'],
     "text_500": ['text', 'length:500'],
     "year_max": ['numeric', 'whole_number', 'range:1980-current_year'],
     "year_min": ['numeric', 'whole_number', 'min:current_year'],
@@ -135,8 +135,7 @@ val_rules = {
 # beolvasás
 def read_excel(excel_file, sheets_to_read):
     try:   
-        all_data = pd.read_excel(excel_file, sheet_name=sheets_to_read, engine='odf')
-        return all_data
+        return pd.read_excel(excel_file, sheet_name=sheets_to_read, engine='odf')
     except Exception as e:
         print(f"Hiba történt az Excel fájl beolvasása során: {e}")
         return None 
@@ -215,34 +214,28 @@ def data_validation(all_data):
       
 
 
-def transform_data(all_data, column_mapping, allapot_map):  
-    try:   
-        df_adatok = all_data['Adatok'].rename(columns=column_mapping)
-        df_management = all_data['Management'].rename(columns=column_mapping)
-        df_EU_tamogatas = all_data['Elnyert EU-s támogatás'].rename(columns=column_mapping)
-        df_infrastruktura = all_data['Infrastruktúra'].rename(columns=column_mapping)
-        df_szolgaltatasok = all_data['Szolgáltatások'].rename(columns=column_mapping)
-
-        df_infrastruktura['allapot'] = df_infrastruktura['allapot'].map(allapot_map)
+def transform_write_to_db(db, all_data, column_mapping, allapot_map):
+    
+    df_adatok = all_data['Adatok'].rename(columns=column_mapping)
+    df_management = all_data['Management'].rename(columns=column_mapping)
+    df_EU_tamogatas = all_data['Elnyert EU-s támogatás'].rename(columns=column_mapping)
+    df_infrastruktura = all_data['Infrastruktúra'].rename(columns=column_mapping)
+    df_szolgaltatasok = all_data['Szolgáltatások'].rename(columns=column_mapping)
+    
+    df_infrastruktura['allapot'] = df_infrastruktura['allapot'].map(allapot_map)
         
-        transformed_data = {
-            'table_cimviselo_data': df_adatok[['cimviselo_nev', 'cimviselo_foglalkoztatott', 'cimviselo_cim', 'osszetetel_allam', 'osszetetel_onkormanyzat', 'osszetetel_belfoldi_magan', 'osszetetel_kulfoldi', 'osszetetel_egyeb',]].copy(),
-            'table_alapadat_data': df_adatok[['park_nev', 'ip_cimszerzes', 'tp_cimszerzes', 'park_email', 'park_telepules', 'park_utca', 'park_iranyitoszam', 'park_varmegye', 'park_hrsz', 'park_regio', 'osszterulet', 'hasznosithato_ter', 'beepitett_ter', 'hasznosithato_szabad_ter', 'hasznosithato_szabad_arany', 'parkolo', 'zoldterulet', 'berbeadott_ter_arany', 'eladott_ter_arany', 'kamara', 'klaszter', 'oktatas_kozep', 'munkaugy', 'civil', 'ip', 'onkormanyzat', 'fejlesztesi_ugynokseg', 'export_ugynokseg', 'kulfoldi_ip', 'nemzetkozi_projekt', 'oktatas_felso', 'kutatointezet', 'kf_tevekenyseg', 'uj_technologia' ,    'sajat_szolg_arany' , 'kiszervezett_szolg_arany', 'park_honlap']].copy(),
-            'table_vallalkozasok_data': df_adatok[['vallalkozasok_terulet', 'vallalkozasok_szama', 'vallalkozasok_foglalkoztatott', 'beruhazasi_ertek', 'arbevetel', 'exportarany', 'kkv_szam', 'nagyvall_szam', 'egyeb_vall_szam','vallalkozasok_ev']].copy(),
-            'table_infrastrukturafejlesztes_data': df_adatok[['sajat_forras', 'allami_forras', 'onkormanyzati_forras', 'EU_forras', 'bankhitel', 'tagi_kolcson', 'tokeemeles', 'egyeb_forras', 'osszes_forras', 'felhasznalas_ev']].copy(),
-            'table_management_data': df_management[['management_nev','jognyilatkozat','operativ','management_beosztas','management_tel','management_email']].copy(),
-            'table_EU_tamogatas_data': df_EU_tamogatas[['op','tamogatas_ev','tamogatas_tartalom','intenzitas','EU_osszkoltseg']].copy(),
-            'table_infra_fajta_data': df_infrastruktura[['infra_tipus','infra_nev']].copy(),
-            'table_infrastruktura_data': df_infrastruktura[['infra_tipus','infra_nev','kapacitas','ellatott_ter','allapot','terv_fejlesztes_ev','terv_forras']].copy(),
-            'table_szolg_fajta_data': df_szolgaltatasok[['szolg_tipus','szolg_nev']].copy(),
-            'table_szolgaltatasok_data': df_szolgaltatasok[['szolg_tipus','szolg_nev','szolg_tartalom','szolgaltato_fajta','szolgaltato_nev','szolg_kezdet']].copy(),
-            'table_helyrajzi_szam_data': (df_adatok['park_hrsz'].astype(str).str.split(',').explode().str.strip().to_frame(name='park_hrsz').copy())
-        }   
-        return transformed_data
-    except Exception as e:
-        print(f"Hiba történt az átalakítás során: {e}") 
-
-def write_to_db(db, transformed_data):
+    table_cimviselo_data = df_adatok[['cimviselo_nev', 'cimviselo_foglalkoztatott', 'cimviselo_cim', 'osszetetel_allam', 'osszetetel_onkormanyzat', 'osszetetel_belfoldi_magan', 'osszetetel_kulfoldi', 'osszetetel_egyeb',]].copy(),
+    table_alapadat_data = df_adatok[['park_nev', 'ip_cimszerzes', 'tp_cimszerzes', 'park_email', 'park_telepules', 'park_utca', 'park_iranyitoszam', 'park_varmegye', 'park_hrsz', 'park_regio', 'osszterulet', 'hasznosithato_ter', 'beepitett_ter', 'hasznosithato_szabad_ter', 'hasznosithato_szabad_arany', 'parkolo', 'zoldterulet', 'berbeadott_ter_arany', 'eladott_ter_arany', 'kamara', 'klaszter', 'oktatas_kozep', 'munkaugy', 'civil', 'ip', 'onkormanyzat', 'fejlesztesi_ugynokseg', 'export_ugynokseg', 'kulfoldi_ip', 'nemzetkozi_projekt', 'oktatas_felso', 'kutatointezet', 'kf_tevekenyseg', 'uj_technologia' ,    'sajat_szolg_arany' , 'kiszervezett_szolg_arany', 'park_honlap']].copy(),
+    table_management_data = df_management[['management_nev', 'jognyilatkozat', 'operativ', 'management_beosztas', 'management_tel', 'management_email']].copy(),
+    table_EU_tamogatas_data = df_EU_tamogatas[['op', 'tamogatas_ev', 'tamogatas_tartalom', 'intenzitas', 'EU_osszkoltseg']].copy(),
+    table_vallalkozasok_data = df_adatok[['vallalkozasok_terulet', 'vallalkozasok_szama', 'vallalkozasok_foglalkoztatott', 'beruhazasi_ertek', 'arbevetel', 'exportarany', 'kkv_szam', 'nagyvall_szam', 'egyeb_vall_szam', 'vallalkozasok_ev']].copy(),
+    table_infra_fajta_data = df_infrastruktura[['infra_tipus','infra_nev']].copy(),
+    table_infrastruktura_data = df_infrastruktura[['infra_tipus','infra_nev','kapacitas','ellatott_ter','allapot','terv_fejlesztes_ev','terv_forras']].copy(),
+    table_infrastrukturafejlesztes_data = df_adatok[['felhasznalas_ev', 'sajat_forras', 'allami_forras', 'onkormanyzati_forras', 'EU_forras', 'bankhitel', 'tagi_kolcson', 'tokeemeles', 'egyeb_forras', 'osszes_forras']].copy(),
+    table_szolg_fajta_data = df_szolgaltatasok[['szolg_tipus','szolg_nev']].copy(),
+    table_szolgaltatasok_data = df_szolgaltatasok[['szolg_tipus','szolg_nev','szolg_tartalom','szolgaltato_fajta','szolgaltato_nev','szolg_kezdet']].copy(),
+    table_helyrajzi_szam_data = df_adatok['park_hrsz'].astype(str).str.split(',').explode().str.strip().to_frame(name='park_hrsz').copy()
+        
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
 
@@ -319,14 +312,19 @@ def write_to_db(db, transformed_data):
         print("Adatok sikeresen feltöltve az adatbázisba.")
 
     except Exception as e:
-        print(f"Hiba történt az adatbázis művelet során: {e}")  
+        print(f"Hiba történt az adatbázis művelet során: {e}")
 
     finally:
         conn.close()    
 
 
-if all_data is not None:
-    if not errors:
-        transformed_data = transform_data(all_data, column_mapping, allapot_map)
-        if transformed_data is not None:
-            write_to_db(db, transformed_data)
+
+
+all_data = read_excel(excel_file, sheets_to_read)
+validation_errors = data_validation(all_data)
+if not validation_errors:
+    transform_write_to_db(db, all_data, column_mapping, allapot_map)
+else:
+    print("Adatellenőrzési hibák:")
+    for error in validation_errors:
+        print(error)
