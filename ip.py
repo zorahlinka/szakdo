@@ -115,21 +115,19 @@ allapot = ['Megfelelő', 'Bővítendő', 'Felújítandó']
 
 # adatellenőrzéshez szükséges szabályok oszlopok szerint:
 val_rules = {
-    "text_255": ["Ipari Park neve", "Címviselő szervezet neve", "Címviselő szervezet címe", "Település", "Út/utca", 'Felelős neve', 'Beosztása', 'Operatív program', 'Projekt tartalom', 'Infrastruktúra típusa', 'Infrastruktúra neve', 'Szolgáltatás típusa', 'Szolgáltatás neve', 'Szolgáltatás tartalma', 'Szolgáltató szervezet neve'],
-    "text_500": ['text', 'length:500'],
-    "year_max": ['numeric', 'whole_number', 'range:1980-current_year'],
-    "year_min": ['numeric', 'whole_number', 'min:current_year'],
-    "email": ['text', 'email_pattern'],
-    "percentage": ['numeric', 'range:0-100'],
-    "percentage_sum": ['numeric', 'range:0-100', 'sum:100'],
-    "positive_real": ['numeric', 'real', 'min:0'],
-    "positive_integer": ['numeric', 'whole_number', 'min:0'],
-    "boolean": ['boolean', 'values:igen-nem'],
-    "varmegye": ['text', 'values:' + ','.join(park_varmegye)],
-    "regio": ['text', 'values:' + ','.join(park_regio)],
-    "szolgaltato_fajta": ['text', 'values:' + ','.join(szolgaltato_fajta)],
-    "telephone": ['text', 'telephone_pattern'],
-       
+    "text_255": ["Ipari Park neve", "Címviselő szervezet neve", "Címviselő szervezet címe", "Település", "Út/utca", "Felelős neve", "Beosztása", "Operatív program", "Infrastruktúra típusa", "Infrastruktúra neve", "Szolgáltatás típusa", "Szolgáltatás neve", "Szolgáltató szervezet neve"],
+    "text_500": ["Szolgáltatás tartalma", "Projekt tartalom" ],
+    "year_max": ["Ipari park cím elnyerésének éve", "Technológiai park cím elnyerésének éve", "Mely évre vonatkoznak az adatok?", "Felhasználás éve", "Szolgáltatás kezdete", "Odaítélés éve",],
+    "year_min": ["Tervezett fejlesztés éve",],
+    "email": ["Email", "Felelős e-mail",],
+    "percentage": ["Állami", "Önkormányzati", "Belföldi magán", "Külföldi", "Egyéb", "Hasznosítható szabad terület aránya (%)", "Betelepített területeit bérbe adja (%)", "Betelepített területeit eladta (%)", "Maga nyújtja (%)", "Kiszervezi (%)", "Exportarány (%)", "Támogatási intenzitás"],
+    "positive_integer": ["Címviselő szervezet foglalkoztatottak száma", "Irányítószám", "Vállalkozások száma", "Foglalkoztatottak létszáma (fő)", "KKV-k száma", "Nagyvállalatok száma", "Egyéb vállalkozások száma"],
+    "positive_real": ["Összterület (ha)", "Hasznosítható terület (ha)", "Betelepített terület (ha)", "Hasznosítható szabad terület (ha)", "Parkolóhely területe (m2)", "Zöldterületek, parkok (m2)", "Vállalkozások területe (ha)", "Beruházási érték (millió Ft)", "Árbevétel (millió Ft)", "Saját forrás (millió Ft)", "Állami támogatás (millió Ft)", "Önkormányzati támogatás (millió Ft)", "EU támogatás (millió Ft)", "Bankhitel (millió Ft)", "Tagi kölcsön (millió Ft)", "Tőkeemelés (millió Ft)", "Egyéb (millió Ft)", "ÖSSZES forrás (millió Ft)", "Kapacitás", "Ellátott terület nagysága (ha)", "Tervezett forrás", "Összköltség (millió Ft)"],
+    "boolean": ["Kamarák", "Klaszterek", "Középfokú oktatási intézmények", "Munkaügyi központ", "Szakmai civil szervezetek", "Más ipari parkok", "Önkormányzat", "Állami fejlesztési ügynökségek", "Magyar Exportfejlesztési Ügynökség", "Külföldi ipari park", "Részvétel nemzetközi projektekben", "Együttműködés felsőoktatási intézménnyel", "Együttműködés kutatóintézettel", "Önálló kutatási tevékenység", "Piacközeli stádiumban lévő technológiák alkalmazása", "Jognyilatkozatra jogosult", "Operatív felelős"],
+    "varmegye": ["Vármegye"],
+    "regio": ["Régió"],
+    "szolgaltato_fajta": ["Szolgáltató szervezet típusa"],
+    "telephone": ["Telefon"],
 }
 
 # beolvasás
