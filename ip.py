@@ -81,6 +81,8 @@ column_mapping = {
     'Beosztása': 'management_beosztas',
     'Telefon': 'management_tel',
     'Felelős e-mail': 'management_email',
+    'Megbízatás kezdete': 'management_kezdet',
+    'Megbízatás vége': 'management_vege',
     'Operatív program': 'op',
     'Odaítélés éve': 'tamogatas_ev',
     'Projekt tartalom': 'tamogatas_tartalom',
@@ -117,6 +119,7 @@ allapot = ['Megfelelő', 'Bővítendő', 'Felújítandó']
 val_rules = {
     "text_255": ["Ipari Park neve", "Címviselő szervezet neve", "Címviselő szervezet címe", "Település", "Út/utca", "Felelős neve", "Beosztása", "Operatív program", "Infrastruktúra típusa", "Infrastruktúra neve", "Szolgáltatás típusa", "Szolgáltatás neve", "Szolgáltató szervezet neve"],
     "text_500": ["Szolgáltatás tartalma", "Projekt tartalom" ],
+    "date": ["Management kezdete", "Management vége"],
     "year_max": ["Ipari park cím elnyerésének éve", "Technológiai park cím elnyerésének éve", "Mely évre vonatkoznak az adatok?", "Felhasználás éve", "Szolgáltatás kezdete", "Odaítélés éve",],
     "year_min": ["Tervezett fejlesztés éve",],
     "email": ["Email", "Felelős e-mail",],
@@ -151,6 +154,9 @@ def data_validation(all_data):
         for col in val_rules["text_500"]:
             if col in row and isinstance(row[col], str) and len(row[col]) > 500:
                 errors.append(f"{line}. sor: '{col}' Túl hosszú (max 500).")
+        for col in val_rules["date"]:
+            if col in row and pd.notnull(row[col]) and not isinstance(row[col], pd.Timestamp):
+                errors.append(f"{line}. sor: '{col}' Érvénytelen dátum formátum.")
         for col in val_rules["year_max"]:
             if col in row and (not isinstance(row[col], (int, float)) or not (1980 <= row[col] <= pd.Timestamp.now().year)):
                 errors.append(f"{line}. sor: '{col}' Érvénytelen év (1980 - jelen).")
@@ -221,10 +227,11 @@ def transform_write_to_db(db, all_data, column_mapping, allapot_map):
     df_szolgaltatasok = all_data['Szolgáltatások'].rename(columns=column_mapping)
     
     df_infrastruktura['allapot'] = df_infrastruktura['allapot'].map(allapot_map)
-        
+
+    table_park_azonosito_data = df_adatok[['park_nev']].copy(),    
     table_cimviselo_data = df_adatok[['cimviselo_nev', 'cimviselo_foglalkoztatott', 'cimviselo_cim', 'osszetetel_allam', 'osszetetel_onkormanyzat', 'osszetetel_belfoldi_magan', 'osszetetel_kulfoldi', 'osszetetel_egyeb',]].copy(),
-    table_alapadat_data = df_adatok[['park_nev', 'ip_cimszerzes', 'tp_cimszerzes', 'park_email', 'park_telepules', 'park_utca', 'park_iranyitoszam', 'park_varmegye', 'park_hrsz', 'park_regio', 'osszterulet', 'hasznosithato_ter', 'beepitett_ter', 'hasznosithato_szabad_ter', 'hasznosithato_szabad_arany', 'parkolo', 'zoldterulet', 'berbeadott_ter_arany', 'eladott_ter_arany', 'kamara', 'klaszter', 'oktatas_kozep', 'munkaugy', 'civil', 'ip', 'onkormanyzat', 'fejlesztesi_ugynokseg', 'export_ugynokseg', 'kulfoldi_ip', 'nemzetkozi_projekt', 'oktatas_felso', 'kutatointezet', 'kf_tevekenyseg', 'uj_technologia' ,    'sajat_szolg_arany' , 'kiszervezett_szolg_arany', 'park_honlap']].copy(),
-    table_management_data = df_management[['management_nev', 'jognyilatkozat', 'operativ', 'management_beosztas', 'management_tel', 'management_email']].copy(),
+    table_alapadat_data = df_adatok[['ip_cimszerzes', 'tp_cimszerzes', 'park_email', 'park_telepules', 'park_utca', 'park_iranyitoszam', 'park_varmegye', 'park_hrsz', 'park_regio', 'sajat_szolg_arany' , 'kiszervezett_szolg_arany', 'park_honlap']].copy(),
+    table_management_data = df_management[['management_nev', 'jognyilatkozat', 'operativ', 'management_beosztas', 'management_tel', 'management_email', 'management_kezdet', 'management_vege']].copy(),
     table_EU_tamogatas_data = df_EU_tamogatas[['op', 'tamogatas_ev', 'tamogatas_tartalom', 'intenzitas', 'EU_osszkoltseg']].copy(),
     table_vallalkozasok_data = df_adatok[['vallalkozasok_terulet', 'vallalkozasok_szama', 'vallalkozasok_foglalkoztatott', 'beruhazasi_ertek', 'arbevetel', 'exportarany', 'kkv_szam', 'nagyvall_szam', 'egyeb_vall_szam', 'vallalkozasok_ev']].copy(),
     table_infra_fajta_data = df_infrastruktura[['infra_tipus','infra_nev']].copy(),
@@ -232,8 +239,11 @@ def transform_write_to_db(db, all_data, column_mapping, allapot_map):
     table_infrastrukturafejlesztes_data = df_adatok[['felhasznalas_ev', 'sajat_forras', 'allami_forras', 'onkormanyzati_forras', 'EU_forras', 'bankhitel', 'tagi_kolcson', 'tokeemeles', 'egyeb_forras', 'osszes_forras']].copy(),
     table_szolg_fajta_data = df_szolgaltatasok[['szolg_tipus','szolg_nev']].copy(),
     table_szolgaltatasok_data = df_szolgaltatasok[['szolg_tipus','szolg_nev','szolg_tartalom','szolgaltato_fajta','szolgaltato_nev','szolg_kezdet']].copy(),
-    table_helyrajzi_szam_data = df_adatok['park_hrsz'].astype(str).str.split(',').explode().str.strip().to_frame(name='park_hrsz').copy()
-        
+    table_helyrajzi_szam_data = df_adatok['park_hrsz'].astype(str).str.split(',').explode().str.strip().to_frame(name='park_hrsz').copy(),
+    table_kapcsolatok_data = df_adatok[['kamara', 'klaszter', 'oktatas_kozep', 'munkaugy', 'civil', 'ip', 'onkormanyzat', 'fejlesztesi_ugynokseg', 'export_ugynokseg', 'kulfoldi_ip', 'nemzetkozi_projekt', 'oktatas_felso', 'kutatointezet', 'kf_tevekenyseg', 'uj_technologia']].copy()
+    table_terulet_data = df_adatok[['osszterulet', 'hasznosithato_ter', 'beepitett_ter', 'hasznosithato_szabad_ter', 'hasznosithato_szabad_arany', 'parkolo', 'zoldterulet', 'berbeadott_ter_arany', 'eladott_ter_arany']].copy()
+
+
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
 
@@ -253,22 +263,22 @@ def transform_write_to_db(db, all_data, column_mapping, allapot_map):
                 cimviselo_id = new_cimviselo_id
     
 
-            park_tocheck = table_alapadat_data['park_nev'].iloc[0]
-            cursor.execute("SELECT DISTINCT park_ID FROM alapadat WHERE park_nev = ?", (park_tocheck,))
+            park_tocheck = table_park_azonosito_data['park_nev'].iloc[0]
+            #todo fuzzy match, hogy ne legyen duplikáció, ha csak kis eltérés van a névben
+            cursor.execute("SELECT park_ID FROM park_azonosito WHERE park_nev = ?", (park_tocheck,))
             result = cursor.fetchone()
             if result:
                 park_id = result[0]
-                table_alapadat_data['cimviselo_ID'] = cimviselo_id
-                table_alapadat_data['park_ID'] = park_id
-                table_alapadat_data.to_sql('alapadat', conn, if_exists='append', index=False)
             else:
-                table_alapadat_data['cimviselo_ID'] = cimviselo_id
-                new_park_id = cursor.execute("SELECT IFNULL(MAX(park_ID), 0) + 1 FROM alapadat").fetchone()[0]
-                table_alapadat_data['park_ID'] = new_park_id
-                table_alapadat_data.to_sql('alapadat', conn, if_exists='append', index=False)
-                park_id = new_park_id
+                park_id = cursor.execute("SELECT IFNULL(MAX(park_ID), 0) + 1 FROM park_azonosito").fetchone()[0]
+                table_park_azonosito_data['park_ID'] = park_id
+                table_park_azonosito_data.to_sql('park_azonosito', conn, if_exists='append', index=False)
+                                
 
-
+            table_alapadat_data['cimviselo_ID'] = cimviselo_id
+            table_alapadat_data['park_ID'] = park_id
+            table_alapadat_data.to_sql('alapadat', conn, if_exists='append', index=False)   
+    
             table_management_data['park_ID'] = park_id
             table_management_data.to_sql('management', conn, if_exists='append', index=False)
 
@@ -283,6 +293,12 @@ def transform_write_to_db(db, all_data, column_mapping, allapot_map):
         
             table_helyrajzi_szam_data['park_ID'] = park_id
             table_helyrajzi_szam_data.to_sql('helyrajzi_szam', conn, if_exists='append', index=False)
+
+            table_kapcsolatok_data['park_ID'] = park_id
+            table_kapcsolatok_data.to_sql('kapcsolatok', conn, if_exists='append', index=False)
+
+            table_terulet_data['park_ID'] = park_id
+            table_terulet_data.to_sql('terulet', conn, if_exists='append', index=False)
 
 
 #az infra_fajta adatokat csak első alkalommal kell bevinni
