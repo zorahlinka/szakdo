@@ -2,6 +2,7 @@ from email import errors
 
 import pandas as pd
 import sqlite3
+from thefuzz import process, fuzz
 
 
 excel_file = '/home/peti/Dokumentumok/gdf/kerdoiv/kerdoiv_valasz_1.ods'
@@ -215,8 +216,26 @@ def data_validation(all_data):
                 errors.append(f"{line}. sor: 'Maga nyújtja (%)' és 'Kiszervezi (%)' összege nem lehet nagyobb, mint 100%.")
         
     return errors
-      
 
+# egyezés keresés a park név és címviselő név oszlopokra, hogy kinyerjük az adatbázisban már szereplő parkok és címviselők azonosítóit    
+def match_park_ID(park_tocheck, db_park_azonosito, threshold=0.85):
+    #if not park_tocheck or not isinstance(park_tocheck, str):
+        #return None
+    match = process.extractOne(park_tocheck, db_park_azonosito['park_nev'], scorer=fuzz.token_sort_ratio)
+        # visszaad: szöveg, pontszám, index
+    if match and match[1] >= threshold:
+        park_id = db_park_azonosito.loc[match[2], 'park_ID']
+        return park_id
+    return None
+
+def match_cimviselo_ID(cimviselo_tocheck, db_cimviselo, threshold=0.85):
+    #if not cimviselo_tocheck or not isinstance(cimviselo_tocheck, str):
+        #return None
+    match = process.extractOne(cimviselo_tocheck, db_cimviselo['cimviselo_nev'], scorer=fuzz.token_sort_ratio)
+    if match and match[1] >= threshold:
+        cimviselo_id = db_cimviselo.loc[match[2], 'cimviselo_ID']
+        return cimviselo_id
+    return None
 
 def transform_write_to_db(db, all_data, column_mapping, allapot_map):
     
@@ -228,8 +247,9 @@ def transform_write_to_db(db, all_data, column_mapping, allapot_map):
     
     df_infrastruktura['allapot'] = df_infrastruktura['allapot'].map(allapot_map)
 
-    table_park_azonosito_data = df_adatok[['park_nev']].copy(),    
-    table_cimviselo_data = df_adatok[['cimviselo_nev', 'cimviselo_foglalkoztatott', 'cimviselo_cim', 'osszetetel_allam', 'osszetetel_onkormanyzat', 'osszetetel_belfoldi_magan', 'osszetetel_kulfoldi', 'osszetetel_egyeb',]].copy(),
+    table_park_azonosito_data = df_adatok[['park_nev']].copy(),
+    table_cimviselo_azonosito_data = df_adatok[['cimviselo_nev']].copy(),    
+    table_cimviselo_data = df_adatok[['cimviselo_foglalkoztatott', 'cimviselo_cim', 'osszetetel_allam', 'osszetetel_onkormanyzat', 'osszetetel_belfoldi_magan', 'osszetetel_kulfoldi', 'osszetetel_egyeb',]].copy(),
     table_alapadat_data = df_adatok[['ip_cimszerzes', 'tp_cimszerzes', 'park_email', 'park_telepules', 'park_utca', 'park_iranyitoszam', 'park_varmegye', 'park_hrsz', 'park_regio', 'sajat_szolg_arany' , 'kiszervezett_szolg_arany', 'park_honlap']].copy(),
     table_management_data = df_management[['management_nev', 'jognyilatkozat', 'operativ', 'management_beosztas', 'management_tel', 'management_email', 'management_kezdet', 'management_vege']].copy(),
     table_EU_tamogatas_data = df_EU_tamogatas[['op', 'tamogatas_ev', 'tamogatas_tartalom', 'intenzitas', 'EU_osszkoltseg']].copy(),
@@ -246,39 +266,42 @@ def transform_write_to_db(db, all_data, column_mapping, allapot_map):
 
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
+    db_park_azonosito = pd.read_sql_query("SELECT park_ID, park_nev FROM park_azonosito;", conn)
+    db_cimviselo_azonosito = pd.read_sql_query("SELECT cimviselo_ID, cimviselo_nev FROM cimviselo_azonosito;", conn)
 
+    
     try:
         with conn:
-            cimviselo_tocheck = table_cimviselo_data['cimviselo_nev'].iloc[0]
-            cursor.execute("SELECT DISTINCT cimviselo_ID FROM cimviselo WHERE cimviselo_nev = ?", (cimviselo_tocheck,))
-            result = cursor.fetchone()
-            if result:
-                cimviselo_id = result[0]
-                table_cimviselo_data['cimviselo_ID'] = cimviselo_id
-                table_cimviselo_data.to_sql('cimviselo', conn, if_exists='append', index=False)
-            else:
-                new_cimviselo_id = cursor.execute("SELECT IFNULL(MAX(cimviselo_ID), 0) + 1 FROM cimviselo").fetchone()[0]
-                table_cimviselo_data['cimviselo_ID'] = new_cimviselo_id
-                table_cimviselo_data.to_sql('cimviselo', conn, if_exists='append', index=False)
-                cimviselo_id = new_cimviselo_id
-    
-
             park_tocheck = table_park_azonosito_data['park_nev'].iloc[0]
-            #todo fuzzy match, hogy ne legyen duplikáció, ha csak kis eltérés van a névben
-            cursor.execute("SELECT park_ID FROM park_azonosito WHERE park_nev = ?", (park_tocheck,))
-            result = cursor.fetchone()
-            if result:
-                park_id = result[0]
+            park_id = match_park_ID(park_tocheck, db_park_azonosito, threshold=0.85)
+            if park_id is not None:
+                print(f"'{park_tocheck}' hasonló park név találat: '{db_park_azonosito.loc[db_park_azonosito['park_ID'] == park_id, 'park_nev'].values[0]}' (park_ID: {park_id})")
             else:
-                park_id = cursor.execute("SELECT IFNULL(MAX(park_ID), 0) + 1 FROM park_azonosito").fetchone()[0]
-                table_park_azonosito_data['park_ID'] = park_id
+                #park_id = cursor.execute("SELECT IFNULL(MAX(park_ID), 0) + 1 FROM park_azonosito").fetchone()[0]
+                #table_park_azonosito_data['park_ID'] = park_id
                 table_park_azonosito_data.to_sql('park_azonosito', conn, if_exists='append', index=False)
-                                
+                park_id = cursor.execute("SELECT park_ID FROM park_azonosito WHERE park_nev = ?", (park_tocheck,)).fetchone()[0]
+                print(f"Új park név hozzáadva: '{park_tocheck}') (park_ID: {park_id})")
+       
+            
+            cimviselo_tocheck = table_cimviselo_data['cimviselo_nev'].iloc[0]
+            cimviselo_id = match_cimviselo_ID(cimviselo_tocheck, db_cimviselo_azonosito, threshold=0.85)
+            if cimviselo_id is not None:
+                print(f"'{cimviselo_tocheck}' hasonló címviselő név találat: '{db_cimviselo_azonosito.loc[db_cimviselo_azonosito['cimviselo_ID'] == cimviselo_id, 'cimviselo_nev'].values[0]}' (cimviselo_ID: {cimviselo_id})")
+            else:                     
+                table_cimviselo_azonosito_data.to_sql('cimviselo_azonosito', conn, if_exists='append', index=False)
+                cimviselo_id = cursor.execute("SELECT cimviselo_ID FROM cimviselo_azonosito WHERE cimviselo_nev = ?", (cimviselo_tocheck,)).fetchone()[0]
+                print(f"Új címviselő név hozzáadva: '{cimviselo_tocheck}') (cimviselo_ID: {cimviselo_id})")
+                
 
-            table_alapadat_data['cimviselo_ID'] = cimviselo_id
             table_alapadat_data['park_ID'] = park_id
+            table_alapadat_data['cimviselo_ID'] = cimviselo_id
             table_alapadat_data.to_sql('alapadat', conn, if_exists='append', index=False)   
-    
+
+            table_cimviselo_data['cimviselo_ID'] = cimviselo_id
+            table_cimviselo_data.to_sql('cimviselo', conn, if_exists='append', index=False)
+
+
             table_management_data['park_ID'] = park_id
             table_management_data.to_sql('management', conn, if_exists='append', index=False)
 
@@ -332,8 +355,6 @@ def transform_write_to_db(db, all_data, column_mapping, allapot_map):
         conn.close()    
 
 
-
-
 all_data = read_excel(excel_file, sheets_to_read)
 validation_errors = data_validation(all_data)
 if not validation_errors:
@@ -342,3 +363,45 @@ else:
     print("Adatellenőrzési hibák:")
     for error in validation_errors:
         print(error)
+
+
+#----------------------------------------------------------------
+# LEKERDEZÉSEK
+
+# Összehasonlító riport két év adatai alapján
+
+def compare_years(db, year1, year2):
+    
+    conn = sqlite3.connect(db)
+        
+    query = """
+    SELECT * FROM eves_osszefoglalo 
+    WHERE adatszolgaltatas_ev IN (?, ?)
+    ORDER BY adatszolgaltatas_ev ASC
+    """
+        
+    df = pd.read_sql_query(query, conn, params=(str(year1), str(year2)))
+    
+    if len(df) < 2:
+        print("Az egyik év adatai nem találhatók az adatbázisban.")
+        return None
+
+    # Esetleg különbség számítása az év1 és év2 között, ha szükséges
+    df = df.set_index('adatszolgaltatas_ev')
+    comparison = df.diff().iloc[1:].rename(index={str(year2): 'Különbség'})
+    
+    df_final_report = pd.concat([df, comparison])
+
+    df_final_report.to_excel('osszehasonlitas.ods', engine='odf', index=False)
+
+    conn.close()
+
+    return df_final_report
+
+database = 'ip.db'
+year_a = 2023
+year_b = 2024
+
+results = compare_years(database, year_a, year_b)
+print(results)
+

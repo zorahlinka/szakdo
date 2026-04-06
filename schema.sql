@@ -25,7 +25,7 @@ CREATE TABLE "alapadat" (
 	"cimviselo_ID"	INTEGER,
 	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY("park_ID","datum"),
-	FOREIGN KEY("cimviselo_ID") REFERENCES "cimviselo"("cimviselo_ID"),
+	FOREIGN KEY("cimviselo_ID") REFERENCES "cimviselo_azonosito"("cimviselo_ID"),
 	FOREIGN KEY("park_ID") REFERENCES "park_azonosito"("park_ID")
 );
 CREATE TABLE "cimviselo" (
@@ -40,6 +40,7 @@ CREATE TABLE "cimviselo" (
 	"osszetetel_egyeb"	REAL,
 	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY("cimviselo_ID","datum")
+	FOREIGN KEY("cimviselo_ID") REFERENCES "cimviselo_azonosito"("cimviselo_ID"),
 );
 CREATE TABLE "helyrajzi_szam" (
 	"park_ID"	INTEGER,
@@ -121,7 +122,7 @@ CREATE TABLE "park_azonosito" (
 	"park_ID"	INTEGER,
 	"park_nev"	TEXT,
 	"aktiv"	INTEGER DEFAULT 1,
-	PRIMARY KEY("park_ID")
+	PRIMARY KEY("park_ID" AUTOINCREMENT)
 );
 CREATE TABLE "szolg_fajta" (
 	"szolg_ID"	INTEGER,
@@ -171,4 +172,9 @@ CREATE TABLE "vallalkozasok" (
 	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY("park_ID","vallalkozasok_ev","datum"),
 	FOREIGN KEY("park_ID") REFERENCES "park_azonosito"("park_ID")
+);
+CREATE TABLE "cimviselo_azonosito" (
+	"cimviselo_ID"	INTEGER,
+	"cimviselo_nev"	TEXT,
+	PRIMARY KEY("cimviselo_ID" AUTOINCREMENT)
 );

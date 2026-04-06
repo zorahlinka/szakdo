@@ -1,0 +1,78 @@
+CREATE VIEW eves_osszefoglalo AS
+WITH utolso_bevitel AS (
+    /* timestamp alapjan utolso adatok kikeresese minden tablaban */
+    SELECT 
+        strftime('%Y', t1.timestamp) AS adatszolgaltatas_ev,
+        t1.park_id,
+        t1.sajat_szolg_arany,
+	t1.kiszervezett_szolg_arany,
+	t2.EU_osszkoltseg,
+	t3.kf_tevekenyseg,
+	t3.uj_technologia,
+	t3.oktatas_felso,
+	t3.kutatointezet,
+        t4.osszterulet,
+	t4.beepitett_ter,
+	t4.berbeadott_ter_arany,
+	t4.eladott_ter_arany,
+	t5.vallalkozasok_szama,
+	t5.vallalkozasok_foglalkoztatott,
+	t5.beruhazasi_ertek,
+	5.arbevetel,
+	t5.exportarany,
+	t5.kkv_szam,
+	t5.nagyvall_szam,
+	t5.egyeb_vall_szam,
+	t6.sajat_forras,
+	t6.allami_forras,
+	t6.onkormanyzati_forras,
+	t6.EU_forras,
+	t6.bankhitel,
+	t6.tagi_kolcson,
+	t6.tokeemeles,
+	t6.egyeb_forras,
+	t6.osszes_forras      
+    FROM alapadat t1
+    JOIN EU_tamogatas t2 ON t1.park_id = t2.park_id AND t1.timestamp = t2.timestamp
+    JOIN kapcsolatok t3 ON t1.park_id = t3.park_id AND t1.timestamp = t3.timestamp
+    JOIN terulet t4 ON t1.park_id = t4.park_id AND t1.timestamp = t4.timestamp
+    JOIN vallalkozasok t5 ON t1.park_id = t5.park_id AND t1.timestamp = t5.timestamp
+	JOIN infrastrukturafejlesztes t6 ON t1.park_id = t6.park_id AND t1.timestamp = t6.timestamp
+	JOIN infrastruktura t7 ON t1.park_id = t7.park_id AND t1.timestamp = t7.timestamp
+    GROUP BY adatszolgaltatas_ev, t1.park_id
+    HAVING t1.timestamp = MAX(t1.timestamp)
+)
+/* parkok adatainak osszesitese */
+SELECT 
+    	adatszolgaltats_ev,
+	COUNT(park_id) as parkok_szama,
+    	SUM(EU_osszkoltseg) as EU_fejlesztes_osszkoltseg,
+	SUM(kf_tevekenyseg) as kf_teveknyseget_vegez,
+	SUM(uj_technologia) as uj_technologiat_hasznal,
+	SUM(oktatas_felso) as kapcsolat_felsooktatas,
+	SUM(kutatointezet) as kapcsolat_kutatointezet,
+	SUM(osszterulet) as minden_osszterulet,
+	SUM(beepitett_ter) as osszes_beepitett_terulet,
+	SUM(vallalkozasok_szama) as osszes_vallalkozas,
+	SUM(vallalkozasok_foglalkoztatott) as osszes_foglalkoztatott,
+	SUM(beruhazasi_ertek) as osszes_beruhazasi_ertek,
+	SUM(arbevetel) as osszes_arbevetel,
+	SUM(kkv_szam) as osszes_kkv,
+	SUM(nagyvall_szam) as osszes_nagyvallalat,
+	SUM(egyeb_vall_szam) as osszes_egyeb_vallalat,
+	SUM(sajat_forras) as osszes_sajat_forras,
+	SUM(allami_forras) as osszes_allami_forras,
+	SUM(onkormanyzati_forras) as osszes_onkormanyzati_forras,
+	SUM(EU_forras) as osszes_EU_forras,
+	SUM(bankhitel) as osszes_bankhitel,
+	SUM(tagi_kolcson) as osszes_tagi_kolcson,
+	SUM(tokeemeles) as osszes_tokeemeles,	
+	SUM(egyeb_forras) as osses_egyeb_forras,
+	SUM(osszes_forras) as minden_forras_osszes,
+	AVG(sajat_szolg_arany) as atlag_sajat_szolg_arany,
+	AVG(kiszervezett_szolg_arany) as atlag_kiszervezett_szolg_arany,
+	AVG(berbeadott_ter_arany) as atlag_berbeadott_ter_arany,
+	AVG(eladott_ter_arany) as atlag_eladott_ter_arany,
+	AVG(exportarany) as atlag_exportarany
+FROM utolso_bevitel
+GROUP BY adatszolgaltatas_ev;
