@@ -1,0 +1,132 @@
+CREATE VIEW vallalkozasok_latest AS
+SELECT*,
+    vallalkozasok_ev AS alapadat_ev
+FROM (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY park_ID, vallalkozasok_ev
+               ORDER BY datum DESC
+           ) AS rn
+    FROM vallalkozasok
+)
+WHERE rn = 1;
+
+CREATE VIEW terulet_latest AS
+SELECT*, 
+    terulet_ev AS alapadat_ev
+FROM (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY park_ID, terulet_ev
+               ORDER BY datum DESC
+           ) AS rn
+    FROM terulet
+)
+WHERE rn = 1;
+
+CREATE VIEW infrastrukturafejlesztes_latest AS
+SELECT*, 
+    felhasznalas_ev AS alapadat_ev
+FROM (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY park_ID, felhasznalas_ev
+               ORDER BY datum DESC
+           ) AS rn
+    FROM infrastrukturafejlesztes
+)
+WHERE rn = 1;
+
+CREATE VIEW EU_tamogatas_latest AS
+SELECT*, 
+    tamogatas_ev AS alapadat_ev
+FROM (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY park_ID, tamogatas_ev, tamogatas_tartalom
+               ORDER BY datum DESC
+           ) AS rn
+    FROM EU_tamogatas
+)
+WHERE rn = 1;
+
+CREATE VIEW kapcsolatok_latest AS
+SELECT*, 
+    kapcsolatok_ev AS alapadat_ev
+FROM (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY park_ID, kapcsolatok_ev
+               ORDER BY datum DESC
+           ) AS rn
+    FROM kapcsolatok
+)
+WHERE rn = 1;
+
+CREATE VIEW alapadat_latest AS
+SELECT* 
+FROM (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY park_ID, alapadat_ev
+               ORDER BY datum DESC
+           ) AS rn
+    FROM alapadat
+)
+WHERE rn = 1;
+
+CREATE VIEW management_latest AS
+SELECT*    
+FROM (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY park_ID, management_email
+               ORDER BY datum DESC
+           ) AS rn
+    FROM management
+)
+WHERE rn = 1;
+
+CREATE VIEW park_base AS
+SELECT 
+    p.park_ID,
+    p.park_nev,
+
+    a.park_regio,
+    a.park_varmegye,
+    a.alapadat_ev,
+    a.park_email,
+
+    m.management_email
+
+FROM park_azonosito p
+
+LEFT JOIN alapadat_latest a 
+    ON p.park_ID = a.park_ID
+
+LEFT JOIN management_latest m
+    ON p.park_ID = m.park_ID;
+
+CREATE VIEW infrastruktura_latest AS
+SELECT*
+FROM (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY park_ID, infra_ID
+               ORDER BY datum DESC
+           ) AS rn
+    FROM infrastruktura
+)
+WHERE rn = 1;
+
+CREATE VIEW szolgaltatas_latest AS
+SELECT*
+FROM (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY park_ID, szolg_ID
+               ORDER BY datum DESC
+           ) AS rn
+    FROM szolgaltatas
+)
+WHERE rn = 1;

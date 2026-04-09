@@ -368,6 +368,295 @@ else:
 #----------------------------------------------------------------
 # LEKERDEZÉSEK
 
+
+# 1) Parkok és managerek elérhetősége (a) összes email, (b) részletes kapcsolati adatokkal (park neve, park email, manager neve, manager email, manager telefon)
+
+def export_all_contacts(db, output_file):
+    conn = sqlite3.connect(db)
+
+    # --- park base data ---
+    base = pd.read_sql("""
+        SELECT park_ID, park_nev, park_email
+        FROM park_base
+    """, conn)
+
+    # --- management data ---
+    management = pd.read_sql("""
+        SELECT park_ID, management_nev, management_email, management_tel
+        FROM management_latest
+    """, conn)
+
+    # --- merge ---
+    df_contacts = base.merge(management, on="park_ID", how="left")
+
+    # --- 1. email list (copy-paste ready) ---
+    emails = pd.concat([
+        df_contacts["park_email"],
+        df_contacts["management_email"]
+    ]).dropna().drop_duplicates()
+
+    df_emails = pd.DataFrame({"email": emails})
+
+    # --- 2. full contact table ---
+    df_full = df_contacts[[
+        "park_nev",
+        "park_email",
+        "management_nev",
+        "management_email",
+        "management_tel"
+    ]].drop_duplicates()
+
+    # --- export ---
+    with pd.ExcelWriter(output_file, engine="odf") as writer:
+        df_emails.to_excel(writer, sheet_name="emailek", index=False)
+        df_full.to_excel(writer, sheet_name="park-kapcsolatok", index=False)
+
+    conn.close()
+
+    print(f"Kész: {output_file}")
+
+# use:
+db = "ip.db"
+output_file = "park_kapcsolatok.ods"
+export_all_contacts(db, output_file)
+
+# -------------------------------------------------
+
+# 2)Parkok és managerek emailcíme, hiányzó éves jelentés esetén (a)park, (b)email, (c)park-email mapping
+
+def export_missing_emails(db, year, output_file):
+    conn = sqlite3.connect(db)
+
+    # --- base ---
+    base = pd.read_sql("""
+        SELECT park_ID, park_nev, park_email, management_email
+        FROM park_base
+    """, conn)
+
+    # --- submitted parks (az éves adatok közül a vállalkozások adatainak beérkezése alapján)
+    submitted = pd.read_sql(f"""
+        SELECT DISTINCT park_ID
+        FROM vallalkozasok_latest
+        WHERE vallalkozasok_ev = {year}
+    """, conn)
+
+    # --- all parks ---
+    all_parks = pd.read_sql("""
+        SELECT park_ID, park_nev
+        FROM park_azonosito
+    """, conn)
+
+    # --- missing parks ---
+    missing = all_parks[
+        ~all_parks["park_ID"].isin(submitted["park_ID"])
+    ]
+
+    # --- filter base ---
+    df_missing = base[
+        base["park_ID"].isin(missing["park_ID"])
+    ]
+
+    # --- 1. park names ---
+    df_parks = df_missing[["park_nev"]].drop_duplicates()
+
+    # --- 2. emails (combined, deduplicated) ---
+    emails = pd.concat([
+        df_missing["park_email"],
+        df_missing["management_email"]
+    ]).dropna().drop_duplicates()
+
+    df_emails = pd.DataFrame({"email": emails})
+
+    # --- 3. park-email mapping ---
+    df_mapping = df_missing[[
+        "park_nev",
+        "park_email",
+        "management_email"
+    ]].drop_duplicates()
+
+    # --- export ---
+    with pd.ExcelWriter(output_file, engine="odf") as writer:
+        df_parks.to_excel(writer, sheet_name="parkok", index=False)
+        df_emails.to_excel(writer, sheet_name="emailek", index=False)
+        df_mapping.to_excel(writer, sheet_name="park-email", index=False)
+
+    conn.close()
+
+    print(f"Kész: {output_file}")
+
+# use:
+db = "ip.db"
+year = 2024
+output_file = "hianyzo_jelentes.ods"
+export_missing_file(db, year, output_file)
+
+#-----------------------------------------------------
+
+# 3) Fő adatok éves összehasonlítása régiónként vagy vármegyékként
+
+agg_full = {
+    "EU_osszkoltseg": "sum",
+
+    "sajat_szolg_arany": "mean",
+    "kiszervezett_szolg_arany": "mean",
+
+    "sajat_forras": "sum",
+    "allami_forras": "sum",
+    "onkormanyzati_forras": "sum",
+    "EU_forras": "sum",
+    "bankhitel": "sum",
+    "tagi_kolcson": "sum",
+    "tokeemeles": "sum",
+    "egyeb_forras": "sum",
+    "osszes_forras": "sum",
+
+    "fejlesztesi_ugynokseg": "sum",
+    "export_ugynokseg": "sum",
+    "kulfoldi_ip": "sum",
+    "nemzetkozi_projekt": "sum",
+    "kf_tevekenyseg": "sum",
+    "uj_technologia": "sum",
+    "oktatas_felso": "sum",
+    "kutatointezet": "sum",
+
+    "osszterulet": "sum",
+    "beepitett_ter": "sum",
+    "berbeadott_ter_arany": "mean",
+    "eladott_ter_arany": "mean",
+
+    "vallalkozasok_szama": "sum",
+    "vallalkozasok_foglalkoztatott": "sum",
+    "beruhazasi_ertek": "sum",
+    "arbevetel": "sum",
+    "exportarany": "mean",
+    "kkv_szam": "sum",
+    "nagyvall_szam": "sum",
+    "egyeb_vall_szam": "sum"
+}
+
+agg_small = {
+    "EU_osszkoltseg": "sum",
+
+    "osszes_forras": "sum",
+
+    "kf_tevekenyseg": "sum",
+    "uj_technologia": "sum",
+    
+    "osszterulet": "sum",
+    "beepitett_ter": "sum",
+    
+    "vallalkozasok_szama": "sum",
+    "vallalkozasok_foglalkoztatott": "sum",
+    "arbevetel": "sum",
+    "exportarany": "mean",
+}
+def load_data(db):
+    conn = sqlite3.connect(db)
+
+    base = pd.read_sql("SELECT * FROM park_base", conn)
+    vall = pd.read_sql("SELECT * FROM vallalkozasok_latest", conn)
+    ter = pd.read_sql("SELECT * FROM terulet_latest", conn)
+    infra_fejl = pd.read_sql("SELECT * FROM infrastrukturafejlesztes_latest", conn)
+    eu = d.read_sql("SELECT * FROM EU_tamogatas_latest", conn)
+    kapcs = d.read_sql("SELECT * FROM kapcsolatok_latest", conn)
+    
+    conn.close()
+
+    df = base.merge(vall, on=["park_ID", "alapadat_ev"], how="left")
+    df = df.merge(ter, on=["park_ID", "alapadat_ev"], how="left")
+    df = df.merge(infra_fejl, on=["park_ID", "alapadat_ev"], how="left")
+    df = df.merge(eu, on=["park_ID", "alapadat_ev"], how="left")
+    df = df.merge(kapcs, on=["park_ID", "alapadat_ev"], how="left")
+
+    return df
+    
+def compare_multi_year(df, group_col, agg_dict, years=None, filter_values=None):
+    
+    """
+    df: merged dataframe
+    group_col: 'park_regio' or 'park_varmegye'
+    years: list of years (optional)
+    filter_values: list of regions/varmegye (optional)
+    """
+
+    df_filtered = df.copy()
+
+    # --- filter years ---
+    if years is not None:
+        df_filtered = df_filtered[df_filtered["alapadat_ev"].isin(years)]
+
+    # --- filter regions / varmegye ---
+    if filter_values is not None:
+        df_filtered = df_filtered[df_filtered[group_col].isin(filter_values)]
+
+    # --- aggregation ---
+    result = df_filtered.groupby([group_col, "alapadat_ev"]).agg(agg_dict).reset_index
+
+
+    result.to_excel(
+        "regional_comparison.ods",
+        engine="odf",
+        sheet_name="comparison",
+        index=False
+    )
+    return result.reset_index
+
+def yoy_compare(df, group_col, metric, agg_dict, years=None):
+    """
+    metric: column to analyze (e.g. 'arbevetel')
+    """
+
+    base = compare_multi_year(df, group_col, agg_dict, years)
+
+    # --- pivot ---
+    pivot = base.pivot_table(
+        values=metric,
+        index=group_col,
+        columns="alapadat_ev"
+    )
+
+    # --- sort years ---
+    pivot = pivot.sort_index(axis=1)
+
+    # --- YoY absolute change ---
+    diff = pivot.diff(axis=1)
+
+    # --- YoY percentage change ---
+    pct = pivot.pct_change(axis=1) * 100
+
+    with pd.ExcelWriter("yoy_analysis.ods", engine="odf") as writer:
+        pivot.to_excel(writer, sheet_name="yoy_values", index=False)
+        diff.to_excel(writer, sheet_name="yoy_diff", index=False)
+        pct.to_excel(writer, sheet_name="yoy_pct", index=False)
+    return pivot, diff, pct
+
+#use
+
+df = load_data(db)
+
+result = compare_multi_year(
+    df,
+    group_col="park_regio",
+    agg_dict=agg_full,
+    years=[2021, 2022, 2023]
+)
+
+pivot, diff, pct = yoy_compare(
+    df,
+    group_col="park_regio",
+    agg_dict=agg_small,
+    years=[2021, 2022, 2023]
+)
+
+
+
+
+
+
+
+
+
+
 # Összehasonlító riport két év adatai alapján
 
 def compare_years(db, year1, year2):
@@ -379,8 +668,9 @@ def compare_years(db, year1, year2):
     WHERE adatszolgaltatas_ev IN (?, ?)
     ORDER BY adatszolgaltatas_ev ASC
     """
-        
-    df = pd.read_sql_query(query, conn, params=(str(year1), str(year2)))
+
+       
+    df = pd.read_sql_query(query, conn, params=(year1, year2))
     
     if len(df) < 2:
         print("Az egyik év adatai nem találhatók az adatbázisban.")
@@ -388,7 +678,8 @@ def compare_years(db, year1, year2):
 
     # Esetleg különbség számítása az év1 és év2 között, ha szükséges
     df = df.set_index('adatszolgaltatas_ev')
-    comparison = df.diff().iloc[1:].rename(index={str(year2): 'Különbség'})
+   
+    comparison = df.diff().iloc[1:].rename(index={year2: 'Különbség'})
     
     df_final_report = pd.concat([df, comparison])
 
@@ -405,3 +696,11 @@ year_b = 2024
 results = compare_years(database, year_a, year_b)
 print(results)
 
+# Regionális összehasonlító riport
+
+EU_osszkoltseg FROM EU_tamogatas
+(sajat_szolg_arany, kiszervezett_szolg_arany) FROM alapadat
+(sajat_forras, allami_forras, onkormanyzati_forras, EU_forras, bankhitel, tagi_kolcson, tokeemeles, egyeb_forras, osszes_forras) FROM infrastrukturafejlesztes
+(fejlesztesi_ugynokseg, export_ugynokseg, kulfoldi_ip, nemzetkozi_projekt, kf_tevekenyseg, uj_technologia, oktatas_felso, kutatointezet) FROM kapcsolatok
+(osszterulet, beepitett_ter, berbeadott_ter_arany, eladott_ter_arany) FROM terulet
+(vallalkozasok_szama, vallalkozasok_foglalkoztatott, beruhazasi_ertek, arbevetel, exportarany, kkv_szam, nagyvall_szam, egyeb_vall_szam) FROM vallalkozasok
