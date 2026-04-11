@@ -167,64 +167,66 @@ def filter_regional(df, group_col, agg_dict, years=None, filter_values=None):
 
     return df_filtered
 
-# 2) EGY adatoszlop adatainak összehasonlítása több régio/vármegye, több év viszonylatában, különbséggel
-def compare_single_metric(df, group_col, metric, agg_dict, years=None):
+# 2) EGY mutató összehasonlítása több régio/vármegye, több év viszonylatában, különbséggel
+def compare_single_metric(df, group_col, metric, agg_dict, years=None, filter_values=None):
     """
+    df: merged dataframe
+    group_col: 'park_regio' or 'park_varmegye'
     metric: column to analyze (e.g. 'arbevetel')
+    agg_dict
+    years: list of years (optional)
+    filter_values: list of regions/varmegye (optional)
     """
+      
     # Ellenőrzés és adatlekérés
-    if metric not in df.columns:
+    df_filtered = df.copy()
+    
+    if years is not None:
+        df_filtered = df_filtered[df_filtered['alapadat_ev'].isin(years)]
+    if filter_values is not None:
+        df_filtered = df_filtered[df_filtered[group_col].isin(filter_values)]
+        
+    if metric not in df_filtered.columns:
         raise ValueError(f"Hiba: A kért oszlop ('{metric}') nem található!")
 
-    base = filter_regional(df, group_col, agg_dict, years, filter_values)
+    base_agg = df_filtered.groupby([group_col, 'alapadat_ev']).agg(agg_dict).reset_index()
+    pivot = base_agg.pivot_table(values=metric, index=group_col, columns='alapadat_ev', fill_value=0).sort_index(axis=1)
     
-    if metric not in base.columns:
-        raise ValueError(f"Hiba: A(z) '{metric}' oszlop nem szerepel az aggregált adatokban. Ellenőrizd az agg_dict-et!")
-    
-    # Pivot tábla (évek az oszlopok)
-    pivot = base.pivot_table(
-        values=metric, 
-        index=group_col, 
-        columns='alapadat_ev',
-        fill_value=0
-        )
-    pivot = pivot.sort_index(axis=1)
-
     years_present = pivot.columns.tolist()
     
     if len(years_present) < 2:
         print(f"Figyelem: Csak egy évnyi adat ({years_present}) áll rendelkezésre. Nincs összehasonlítás.")
+        filter_label = ""
+        if filter_values is not None:
+            filter_label = f"_filtered_{len(filter_values)}items"
+        else ""
+        file_name = f"jelentes_{metric}_{group_col}{filter_label}_{years_present}.ods"
+        pivot.to_excel(file_name, engine="odf", index=True)
         
-        pivot.to_excel("eves_regios_osszehasonlitas.ods", engine="odf", index=True)
         return pivot, None, None
     
     first_year = years_present[0]
     last_year = years_present[-1]
 
     # Változás évről évre (abszolút, százalék), oszlopok elnevezése
-    yearly_diff = pivot.diff(axis=1).drop(columns=first_year)
-    yearly_pct = (pivot.pct_change(axis=1) * 100).drop(columns=first_year)
+    yearly_diff = pivot.diff(axis=1).drop(columns=first_year).round(0)
+    yearly_pct = division(yearly_diff, pivot.drop(columns=last_year).values).round(2)
     
     yearly_diff.columns = [f"{col} vs elozo ev (ertek)" for col in yearly_diff.columns]
     yearly_pct.columns = [f"{col} vs elozo ev (%)" for col in yearly_pct.columns]
     
     # Változás a teljes időszakban (első és utolső év között)
-    total_diff = pivot[last_year] - pivot[first_year]
-    total_pct = (total_diff / pivot[first_year] * 100).replace([np.inf, -np.inf], 0).fillna(0)
+    total_diff = pivot[last_year] - pivot[first_year].round(0)
+    total_pct = division(total_diff, pivot[first_year]).round(2)
 
     # Összeillesztés egy táblázatba
     final_report = pivot.copy()
     final_report = pd.concat([final_report, yearly_diff, yearly_pct], axis=1)
-    
-    # Teljes változás hozzáadása a végére
     final_report[f"Teljes kulonbseg ({first_year}-{last_year})"] = total_diff
     final_report[f"Teljes % ({first_year}-{last_year})"] = total_pct
-   
+
     # Mentés
-    with pd.ExcelWriter("eves_regios_osszehasonlitas.ods", engine="odf") as writer:
-        final_report.to_excel(writer, sheet_name="ev_regio", index=True)
-    
-    file_label = "_".join(map(str, years_present))
+    file_label = "_".join([str(years_present[0]), str(years_present[-1])])
     filter_label = ""
     if filter_values is not None:
         filter_label = f"_filtered_{len(filter_values)}items"
@@ -366,20 +368,14 @@ def compare_all_parks_total_and_avg(df, agg_dict, years=None):
     if years:
         df_f = df_f[df_f['alapadat_ev'].isin(years)]
 
-    # 1. Évenkénti aggregálás (Összeg és Átlag egyszerre)
-    # A .agg-nak listát adunk, így minden mutatónak kiszámolja mindkét verziót
+    # Évenkénti aggregálás (Összeg és Átlag egyszerre)
     report = df_f.groupby('alapadat_ev').agg(agg_dict).T
     
-    # 2. "Átlag per park" kiszámítása
-    # Mivel a 'mean' nem biztos, hogy mindenhol jó (pl. szummázandó forrásoknál), 
-    # a legpontosabb: Összesen / Parkok száma az adott évben.
     park_counts = df_f.groupby('alapadat_ev')['park_ID'].nunique()
     
     # Létrehozunk egy új MultiIndex struktúrát
     years_present = sorted(df_f['alapadat_ev'].unique())
     metrics = list(agg_dict.keys())
-    
-    # Új DataFrame építése
     final_cols = []
     for y in years_present:
         final_cols.append((y, 'Összesen'))
@@ -393,16 +389,9 @@ def compare_all_parks_total_and_avg(df, agg_dict, years=None):
             # Összesen érték
             total_val = df_f[df_f['alapadat_ev'] == y][m].sum() if agg_dict[m] == "sum" else df_f[df_f['alapadat_ev'] == y][m].mean()
             
-            final_df.loc[m, (y, 'Összesen')] = total_val
+            final_df.loc[m, (y, 'Összesen')] = total_val.round(0)
             # Átlagos érték (egy parkra jutó)
-            final_df.loc[m, (y, 'Átlag per park')] = total_val / count if agg_dict[m] == "sum" else total_val
-
-    # 3. Kerekítés
-    for m in metrics:
-        if agg_dict[m] == "sum":
-            final_df.loc[m] = final_df.loc[m].astype(float).round(0)
-        else:
-            final_df.loc[m] = final_df.loc[m].astype(float).round(2)
+            final_df.loc[m, (y, 'Átlag per park')] = (total_val / count if agg_dict[m] == "sum" else total_val).round(2)
 
     final_df.to_excel("osszesitett_park_elemzes.ods", engine="odf")
     return final_df
