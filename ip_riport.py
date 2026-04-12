@@ -5,6 +5,7 @@ import os
 
 db = '/home/peti/Dokumentumok/gdf/adatbazis/IP'
 
+# Aggregálás
 agg_full = {
     "EU_osszkoltseg": "sum",
 
@@ -62,12 +63,12 @@ agg_small = {
     "exportarany": "mean",
 }
 
-# Segédfüggvények (osztás 0-val, nincs adatbázis, adatbetöltés - összes view összefésülése)
+# Segédfüggvények (osztás 0-val, connection, adatbetöltés - összes view összefésülése, filter, kerekítés, export)
 
-def division(numerator, denominator):
+def safe_div(numerator, denominator):
     with np.errstate(divide='ignore', invalid='ignore'):
         res = (numerator / denominator) * 100
-        return res.replace([np.inf, -np.inf], 0).fillna(0)
+        return pd.Series(res).replace([np.inf, -np.inf], 0).fillna(0)
 
 def get_conn(db):
     if not os.path.exists(db):
@@ -84,9 +85,48 @@ def load_data(db):
             df = df.merge(tmp, on=["park_ID", "alapadat_ev"], how="left")
     return df
 
+def apply_filters(df, years=None, filter_col=None, filter_values=None):
+    """
+    df: merged dataframe
+    years: list of years
+    filter_col: 'park_regio' or 'park_varmegye'
+    filter_values: list of regions/varmegye
+    """
+    
+    df = df.copy()
+
+    if years is not None:
+        df = df[df["alapadat_ev"].isin(years)]
+
+    if filter_col and filter_values:
+        df = df[df[filter_col].isin(filter_values)]
+
+    return df
+
+def round_by_agg(df, agg_dict):
+    for col, method in agg_dict.items():
+        if col not in df.index and col not in df.columns:
+            continue
+
+        if method == "sum":
+            df.loc[col] = df.loc[col].round(0)
+        else:
+            df.loc[col] = df.loc[col].round(2)
+
+    return df
+
+def export_to_ods(file_name, sheets: dict):
+    """
+    sheets = {"sheet_name": dataframe}
+    """
+    with pd.ExcelWriter(file_name, engine="odf") as writer:
+        for name, df in sheets.items():
+            safe_name = str(name)[:31]
+            df.to_excel(writer, sheet_name=safe_name, index=True)
+
 # -------------------------------------------------
 
-# Adatkezelő függvények
+# Kontakt adatok exportálása
 
 # 1) Parkok és managerek elérhetősége (a) összes email, (b) részletes kapcsolati adatok
 
@@ -95,14 +135,14 @@ def export_all_contacts(db, output_file):
         base = pd.read_sql("SELECT park_ID, park_nev, park_email FROM park_base", conn)
         management = pd.read_sql("SELECT park_ID, management_nev, management_email, management_tel FROM management_latest", conn)
 
-    df = base.merge(management, on="park_ID", how="left")
+    df_contacts = base.merge(management, on="park_ID", how="left")
+    
     emails = pd.concat([df_contacts["park_email"], df_contacts["management_email"]]).dropna().drop_duplicates()
     df_emails = pd.DataFrame({"email": emails})
-    df_contacts = df.drop(columns="park_ID").drop_duplicates() 
-        
+    
     with pd.ExcelWriter(output_file, engine="odf") as writer:
         df_emails.to_excel(writer, sheet_name="emailek", index=False)
-        df_contacts.to_excel(writer, sheet_name="park_kapcsolatok", index=False)
+        df_contacts.drop(columns="park_ID").to_excel(writer, sheet_name="park_kapcsolatok", index=False)
 
 
 # use:
@@ -116,21 +156,17 @@ export_all_contacts(db, output_file)
 def export_missing_reports(db, year, output_file):
     with get_conn(db) as conn:
         base = pd.read_sql("SELECT park_ID, park_nev, park_email, management_email FROM park_base", conn)
-        submitted = pd.read_sql(f"SELECT DISTINCT park_ID FROM vallalkozasok_latest WHERE alapadat_ev = {year}", conn)
+        submitted = pd.read_sql(f"SELECT DISTINCT park_ID FROM vallalkozasok_latest WHERE alapadat_ev = ?", conn, params=(year,))
         
     df_missing = base[~base["park_ID"].isin(submitted["park_ID"])]
     
-    df_parks = df_missing[["park_nev"]].drop_duplicates()
-
     emails = pd.concat([df_missing["park_email"], df_missing["management_email"]]).dropna().drop_duplicates()
     df_emails = pd.DataFrame({"email": emails})
     
-    df_mapping = df_missing[["park_nev", "park_email", "management_email"]].drop_duplicates()
-
     with pd.ExcelWriter(output_file, engine="odf") as writer:
-        df_parks.to_excel(writer, sheet_name="parkok", index=False)
+        df_missing[["park_nev"]]drop_duplicates().to_excel(writer, sheet_name="parkok", index=False)
         df_emails.to_excel(writer, sheet_name="emailek", index=False)
-        df_mapping.to_excel(writer, sheet_name="park-email", index=False)
+        df_missing.drop_duplicates().to_excel(writer, sheet_name="park-email", index=False)
 
  
 # use:
@@ -144,177 +180,111 @@ export_missing_reports(db, year, output_file)
 
 # Statisztikai elemző függvények (fő adatok összehasonlítása régiónként vagy vármegyékként, valamint éves összehasonlítás)
 
-# 1) Alap szűrés, aggregálás   
-def filter_regional(df, group_col, agg_dict, years=None, filter_values=None):
-    """
-    df: merged dataframe
-    group_col: 'park_regio' or 'park_varmegye'
-    years: list of years (optional)
-    filter_values: list of regions/varmegye (optional)
-    """
-
-    df_filtered = df.copy()
-
-    # Szűrések
-    if years is not None:
-        df_filtered = df_filtered[df_filtered['alapadat_ev'].isin(years)]
-
-    if filter_values is not None:
-        df_filtered = df_filtered[df_filtered[group_col].isin(filter_values)]
-
-    # Aggregálás régiónként, évenként
-    df_filtered = df_filtered.groupby([group_col, 'alapadat_ev']).agg(agg_dict).reset_index()
-
-    return df_filtered
+# 1) Aggregálás
+def aggregate(df, group_cols, agg_dict):
+    return df.groupby(group_cols).agg(agg_dict).reset_index()
 
 # 2) EGY mutató összehasonlítása több régio/vármegye, több év viszonylatában, különbséggel
 def compare_single_metric(df, group_col, metric, agg_dict, years=None, filter_values=None):
-    """
-    df: merged dataframe
-    group_col: 'park_regio' or 'park_varmegye'
-    metric: column to analyze (e.g. 'arbevetel')
-    agg_dict
-    years: list of years (optional)
-    filter_values: list of regions/varmegye (optional)
-    """
-      
-    # Ellenőrzés és adatlekérés
-    df_filtered = df.copy()
+          
+    df = apply_filters(df, years, group_col, filter_values)
     
-    if years is not None:
-        df_filtered = df_filtered[df_filtered['alapadat_ev'].isin(years)]
-    if filter_values is not None:
-        df_filtered = df_filtered[df_filtered[group_col].isin(filter_values)]
+    if metric not in df.columns:
+        raise ValueError(f"A kért oszlop ('{metric}') nem található!")
+
+    base = aggregate(df, [group_col, "alapadat_ev"], agg_dict)
+    
+    pivot = base.pivot_table(values=metric, index=group_col, columns="alapadat_ev", fill_value=0).sort_index(axis=1)
         
-    if metric not in df_filtered.columns:
-        raise ValueError(f"Hiba: A kért oszlop ('{metric}') nem található!")
+    if pivot.shape[1] < 2:
+        file_name = f"jelentes_{metric}_{group_col}_{years}.ods"
 
-    base_agg = df_filtered.groupby([group_col, 'alapadat_ev']).agg(agg_dict).reset_index()
-    pivot = base_agg.pivot_table(values=metric, index=group_col, columns='alapadat_ev', fill_value=0).sort_index(axis=1)
-    
-    years_present = pivot.columns.tolist()
-    
-    if len(years_present) < 2:
-        print(f"Figyelem: Csak egy évnyi adat ({years_present}) áll rendelkezésre. Nincs összehasonlítás.")
-        filter_label = ""
-        if filter_values is not None:
-            filter_label = f"_filtered_{len(filter_values)}items"
-        else ""
-        file_name = f"jelentes_{metric}_{group_col}{filter_label}_{years_present}.ods"
-        pivot.to_excel(file_name, engine="odf", index=True)
-        
-        return pivot, None, None
-    
-    first_year = years_present[0]
-    last_year = years_present[-1]
+        export_to_ods(file_name, {
+            "adat": pivot
+        })
+        return pivot
 
-    # Változás évről évre (abszolút, százalék), oszlopok elnevezése
-    yearly_diff = pivot.diff(axis=1).drop(columns=first_year).round(0)
-    yearly_pct = division(yearly_diff, pivot.drop(columns=last_year).values).round(2)
+    first, last = pivot.columns[0], pivot.columns[-1]
+
+    yearly_diff = pivot.diff(axis=1).iloc[:, 1:]
+    yearly_pct = safe_div(diff, pivot.iloc[:, :-1].values)
+
+    yearly_diff.columns = [f"{col} valtozas(elozo ev, ertek)" for col in yearly_diff.columns]
+    yearly_pct.columns = [f"{col} valtzas(elozo ev, %)" for col in yearly_pct.columns]
     
-    yearly_diff.columns = [f"{col} vs elozo ev (ertek)" for col in yearly_diff.columns]
-    yearly_pct.columns = [f"{col} vs elozo ev (%)" for col in yearly_pct.columns]
+    total_diff = pivot[last] - pivot[first]
+    total_pct = safe_div(total_diff, pivot[first])
+
+    result = pd.concat([pivot, yearly_diff, yearly_pct], axis=1)
+    result[f"Teljes kulonbseg ({first}-{last})"] = total_diff
+    result[f"Teljes % ({first}-{last})"] = total_pct
+
+    file_name = f"jelentes_{metric}_{group_col}_{first}_{last}.ods"
     
-    # Változás a teljes időszakban (első és utolső év között)
-    total_diff = pivot[last_year] - pivot[first_year].round(0)
-    total_pct = division(total_diff, pivot[first_year]).round(2)
+    export_to_ods(file_name, {
+        "jelentes": result
+    })
 
-    # Összeillesztés egy táblázatba
-    final_report = pivot.copy()
-    final_report = pd.concat([final_report, yearly_diff, yearly_pct], axis=1)
-    final_report[f"Teljes kulonbseg ({first_year}-{last_year})"] = total_diff
-    final_report[f"Teljes % ({first_year}-{last_year})"] = total_pct
-
-    # Mentés
-    file_label = "_".join([str(years_present[0]), str(years_present[-1])])
-    filter_label = ""
-    if filter_values is not None:
-        filter_label = f"_filtered_{len(filter_values)}items"
-    else ""
-    file_name = f"jelentes_{metric}_{group_col}{filter_label}_{file_label}.ods"
-    final_report.to_excel(file_name, engine="odf")
-
-    return final_report
+    return result
 
 # 3) EGY régió/vármegye/park összes mutatójának idősoros elemzése, különbséggel
-def compare_single_entity_all_metrics(df, group_col, entity_name, agg_dict, years=None):
+def compare_entity_all_metrics(df, group_col, entity, agg_dict, years=None):
     """
     Y tengely: Mutatók az agg_dict-ből
     X tengely: Évek + Változás oszlopok
     group_col: park_regio, park_varmegye, park_nev
     """
     
-    # 1. Ellenőrzés: Létezik-e a keresett entitás?
-    if entity_name not in df[group_col].unique():
+    if entity not in df[group_col].values:
         available_names = sorted(df[group_col].dropna().unique())
-        print(f"HIBA: '{entity_name}' nem található a(z) '{group_col}' oszlopban.")
+        print(f"Nincs ilyen entitás: {entity}")
         print(f"Választható lehetőségek: {available_names}")
         return None
 
-    # 2. Szűrés az adott egységre és évekre
-    df_filtered = df[df[group_col] == entity_name].copy()
-    if years:
-        df_filtered = df_filtered[df_filtered['alapadat_ev'].isin(years)]
+    df = df[df[group_col] == entity].copy()
+    df = apply_filters(df, years)
 
-    if df_filtered.empty:
-        print(f"FIGYELEM: Nincs elérhető adat a megadott évekre: {years}")
-        return None
-
-    # 3. Aggregálás évenként és Transzponálás (.T)
-    # Ezzel érjük el, hogy a mutatók legyenek a sorok, az évek pedig az oszlopok
-    report = df_filtered.groupby('alapadat_ev').agg(agg_dict).T
-    report = report.sort_index(axis=1) # Évek sorrendbe tétele
-
-    # 4. Idősoros változások számítása (ha van legalább 2 év)
-    years_present = report.columns.tolist()
-    if len(years_present) >= 2:
-        first_year = years_present[0]
-        last_year = years_present[-1]
-
-        # Abszolút különbség az első és utolsó év között
-        report['Teljes változás'] = report[last_year] - report[first_year]
-        
-        # Százalékos változás hibakezeléssel (nullával osztás -> 0)
-        report['Teljes változás (%)'] = (
-            (report['Teljes változás'] / report[first_year] * 100)
-            .replace([np.inf, -np.inf], 0)
-            .fillna(0)
-        )
-
-    # 5. Kerekítés a mutató típusa szerint (sum -> egész, mean -> 2 tizedes)
-    for metric, method in agg_dict.items():
-        if method == "sum":
-            report.loc[metric] = report.loc[metric].round(0).astype(int)
-        else:
-            report.loc[metric] = report.loc[metric].round(2)
-
-    # 6. Mentés .ods formátumba
-    # Speciális karakterek tisztítása a fájlnévből
-    safe_entity_name = str(entity_name).replace(' ', '_').replace('/', '-')
-    file_name = f"reszletes_elemzes_{safe_entity_name}.ods"
+    if df_f.empty:
+        raise ValueError("Nincs adat a megadott szűrésre.")
     
-    try:
-        report.to_excel(file_name, engine="odf", index=True)
-        print(f"Sikeres mentés: {file_name}")
-    except Exception as e:
-        print(f"Hiba a mentés során: {e}")
+    # aggregálás évenként és Transzponálás (.T) mutatók - sorok, évek - oszlopok
+    report = df.groupby("alapadat_ev").agg(agg_dict).T
+    
+    if years is not None:
+        years = sorted(years)
+        report = report.reindex(columns=years, fill_value=0)
+    
+    if report.shape[1] >= 2:
+        first, last = report.columns[0], report.columns[-1]
+        report["Teljes változás, összeg"] = report[last] - report[first]
+        report["Teljes változás, %"] = safe_div(report["Teljes változás, összeg"], report[first])
+    
+    report = round_by_agg(report, agg_dict)
+
+    safe_name = str(entity)[:31].replace(" ", "_").replace("/", "-")
+    file_name = f"reszletes_elemzes_{safe_name}.ods"
+
+    export_to_ods(file_name, {
+        entity: report
+    })
 
     return report
+    
 
 # 4) A compare_single_entity_all_metrics végrejatása minden régióra/vármegyére, mentés egy fájl külön munkalapjaira
-def export_all_entities_to_one_file(df, group_col, agg_dict, output_name, years=None):
+def export_all_entities(df, group_col, agg_dict, output_file, years=None):
     
     entities = sorted(df[group_col].dropna().unique())
         
-    with pd.ExcelWriter(output_name, engine="odf") as writer:
-        for entity in entities:
-            report = compare_single_entity_metrics(df, group_col, entity, agg_dict, years)
-            if report is not None:
-                sheet_label = str(entity)[:31] # sheet neve max 31 karakter
-                report.to_excel(writer, sheet_name=sheet_label)
-                                
-    print(f"Fájl mentve: {output_name}")
+    sheets = {}
 
+    for entity in entities:
+        report = compare_entity_all_metrics(df, group_col, entity, agg_dict, years)
+        if report is not None:
+            sheets[str(entity)] = report
+
+    export_to_ods(output_file, sheets)
+    
 
 # 5) EGY vagy KÉT év adatai több adatoszlop, több régió/vármegye vonatkozásában
 def compare_metrics_by_year(df, group_col, agg_dict, years):
@@ -322,51 +292,38 @@ def compare_metrics_by_year(df, group_col, agg_dict, years):
     y tengely: régiók
     x tengely: agg_dict mutatói, mindegyik alatt az évek (1 vagy 2 oszlop)
     """
-    # Adatok előkészítése (évek, oszlopok listába rendezése)
+    
     if isinstance(years, int): 
         years = [years]
     
+    df = apply_filters(df, years)
+
+    base = aggregate(df, [group_col, "alapadat_ev"], agg_dict)
+        
     metrics = list(agg_dict.keys())
     
-    base = filter_regional(df, group_col, agg_dict, years)
-    
-    # Pivot tábla ('values' az agg_small kulcsai)
-    pivot = base.pivot_table(
-        values=metrics, 
-        index=group_col, 
-        columns='alapadat_ev',
-        fill_value=0
-    )
+    pivot = base.pivot_table(values=metrics, index=group_col, columns='alapadat_ev', fill_value=0)
     
     # Oszlopok rendezése: Mutató szerint (level 0), majd Év szerint (level 1)
     pivot = pivot.sort_index(axis=1, level=0)
-    
-    # Kerekítés
-    for metric in metrics:
-        if agg_dict[metric] == "sum":
-            pivot[metric] = pivot[metric].round(0).astype(int)
-        else:
-            pivot[metric] = pivot[metric].round(2)
-    
-    # Mentés
-    file_label = "_".join(map(str, years))
-    filter_label = ""
-    if filter_values is not None:
-        filter_label = f"_filtered_{len(filter_values)}items"
-    file_name = f"jelentes_{group_col}{filter_label}_{file_label}.ods"
-    pivot.to_excel(file_name, engine="odf")
-    
-    return pivot
 
+    file_label = "_".join(map(str, years))
+    file_name = f"jelentes_{group_col}_{file_label}.ods"
+
+    export_to_ods(file_name, {
+        "report": pivot
+    })
+
+    return pivot
+    
 # 6) Éves összesített jelentés
 def compare_all_parks_total_and_avg(df, agg_dict, years=None):
     """
     Y tengely: Mutatók
     X tengely: Évek (minden év alatt: a) Összesen, b) Átlag per park)
     """
-    df_f = df.copy()
-    if years:
-        df_f = df_f[df_f['alapadat_ev'].isin(years)]
+    
+    df = apply_filters(df, years)
 
     # Évenkénti aggregálás (Összeg és Átlag egyszerre)
     report = df_f.groupby('alapadat_ev').agg(agg_dict).T
