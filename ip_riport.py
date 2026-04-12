@@ -317,7 +317,7 @@ def compare_metrics_by_year(df, group_col, agg_dict, years):
     return pivot
     
 # 6) Éves összesített jelentés
-def compare_all_parks_total_and_avg(df, agg_dict, years=None):
+def compare_totals(df, agg_dict, years=None):
     """
     Y tengely: Mutatók
     X tengely: Évek (minden év alatt: a) Összesen, b) Átlag per park)
@@ -325,33 +325,66 @@ def compare_all_parks_total_and_avg(df, agg_dict, years=None):
     
     df = apply_filters(df, years)
 
-    # Évenkénti aggregálás (Összeg és Átlag egyszerre)
-    report = df_f.groupby('alapadat_ev').agg(agg_dict).T
-    
-    park_counts = df_f.groupby('alapadat_ev')['park_ID'].nunique()
-    
-    # Létrehozunk egy új MultiIndex struktúrát
-    years_present = sorted(df_f['alapadat_ev'].unique())
-    metrics = list(agg_dict.keys())
-    final_cols = []
-    for y in years_present:
-        final_cols.append((y, 'Összesen'))
-        final_cols.append((y, 'Átlag per park'))
-    
-    final_df = pd.DataFrame(index=metrics, columns=pd.MultiIndex.from_tuples(final_cols))
+    if df.empty:
+        raise ValueError("Nincs adat a megadott szűrésre.")
 
-    for y in years_present:
-        count = park_counts[y]
-        for m in metrics:
-            # Összesen érték
-            total_val = df_f[df_f['alapadat_ev'] == y][m].sum() if agg_dict[m] == "sum" else df_f[df_f['alapadat_ev'] == y][m].mean()
-            
-            final_df.loc[m, (y, 'Összesen')] = total_val.round(0)
-            # Átlagos érték (egy parkra jutó)
-            final_df.loc[m, (y, 'Átlag per park')] = (total_val / count if agg_dict[m] == "sum" else total_val).round(2)
+    # Évenkénti aggregálás
+    totals = df.groupby('alapadat_ev').agg(agg_dict)
+    counts = df.groupby('alapadat_ev')['park_ID'].nunique()
+    
+    years_sorted = sorted(totals.index)
 
-    final_df.to_excel("osszesitett_park_elemzes.ods", engine="odf")
+    result = {}
+    per_park = {}
+
+    # Alap összesen és per park
+    for year in years_sorted:
+        total_vals = totals.loc[year]
+        avg_vals = total_vals / counts[year]
+
+        result[(year, "Osszesen")] = total_vals
+        result[(year, "Atlag_per_park")] = avg_vals
+
+        per_park[year] = avg_vals
+
+    # Éves változás per park
+    for i in range(1, len(years_sorted)):
+        prev_y = years_sorted[i - 1]
+        curr_y = years_sorted[i]
+
+        yearly = safe_div(
+            per_park[curr_y] - per_park[prev_y],
+            per_park[prev_y]
+        )
+
+        result[(curr_y, "Eves kulonbseg_per_park_%")] = yearly
+
+    # Időszakos változás
+    if len(years_sorted) >= 2:
+        first = years_sorted[0]
+        last = years_sorted[-1]
+
+        total_diff = per_park[last] - per_park[first]
+        total_pct = safe_div(total_diff, per_park[first])
+
+        #multiindex
+        result[("period", "diff")] = total_diff
+        result[("period", "pct")] = total_pct
+
+
+    
+    final_df = pd.DataFrame(result)
+    
+    final_df = final_df.sort_index(axis=1, level=0)
+    
+    final_df = round_by_agg(final_df, agg_dict)
+    
+    file_name = "osszesitett_park_elemzes.ods"
+
+    export_to_ods(file_name, {"osszesitett": final_df})
+
     return final_df
+    
 
 
 """
