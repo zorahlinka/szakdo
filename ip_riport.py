@@ -495,4 +495,348 @@ results = compare_years(database, year_a, year_b)
 print(results)
 
 
+import pandas as pd
+import numpy as np
+import sqlite3
+import os
 
+# =========================
+# AGGREGATION CONFIG
+# =========================
+
+AGG_BASE = {
+    "EU_osszkoltseg": "sum",
+    "osszes_forras": "sum",
+    "kf_tevekenyseg": "sum",
+    "uj_technologia": "sum",
+    "osszterulet": "sum",
+    "beepitett_ter": "sum",
+    "vallalkozasok_szama": "sum",
+    "vallalkozasok_foglalkoztatott": "sum",
+    "arbevetel": "sum",
+    "exportarany": "mean",
+}
+
+AGG_EXTRA = {
+    "sajat_szolg_arany": "mean",
+    "kiszervezett_szolg_arany": "mean",
+    "sajat_forras": "sum",
+    "allami_forras": "sum",
+    "onkormanyzati_forras": "sum",
+    "EU_forras": "sum",
+    "bankhitel": "sum",
+    "tagi_kolcson": "sum",
+    "tokeemeles": "sum",
+    "egyeb_forras": "sum",
+    "fejlesztesi_ugynokseg": "sum",
+    "export_ugynokseg": "sum",
+    "kulfoldi_ip": "sum",
+    "nemzetkozi_projekt": "sum",
+    "oktatas_felso": "sum",
+    "kutatointezet": "sum",
+    "berbeadott_ter_arany": "mean",
+    "eladott_ter_arany": "mean",
+    "kkv_szam": "sum",
+    "nagyvall_szam": "sum",
+    "egyeb_vall_szam": "sum"
+}
+
+agg_small = AGG_BASE
+agg_full = {**AGG_BASE, **AGG_EXTRA}
+
+AGG_MAP = {
+    "small": agg_small,
+    "full": agg_full
+}
+
+# =========================
+# HELPERS
+# =========================
+
+def safe_div(numerator, denominator):
+    with np.errstate(divide='ignore', invalid='ignore'):
+        res = (numerator / denominator) * 100
+        return pd.Series(res).replace([np.inf, -np.inf], 0).fillna(0)
+
+def get_conn(db):
+    if not os.path.exists(db):
+        raise FileNotFoundError(f"Adatbázis nem található: {db}")
+    return sqlite3.connect(db)
+
+def load_data(db):
+    views = [
+        "park_base",
+        "vallalkozasok_latest",
+        "terulet_latest",
+        "infrastrukturafejlesztes_latest",
+        "EU_tamogatas_latest",
+        "kapcsolatok_latest"
+    ]
+
+    with get_conn(db) as conn:
+        df = pd.read_sql("SELECT * FROM park_base", conn)
+
+        for v in views[1:]:
+            tmp = pd.read_sql(f"SELECT * FROM {v}", conn)
+            df = df.merge(tmp, on=["park_ID", "alapadat_ev"], how="left")
+
+    return df
+
+def apply_filters(df, years=None, filter_col=None, filter_values=None):
+    df = df.copy()
+
+    if years is not None:
+        df = df[df["alapadat_ev"].isin(years)]
+
+    if filter_col and filter_values:
+        df = df[df[filter_col].isin(filter_values)]
+
+    return df
+
+def aggregate(df, group_cols, agg_dict):
+    return df.groupby(group_cols).agg(agg_dict).reset_index()
+
+def round_by_agg(df, agg_dict):
+    for col, method in agg_dict.items():
+        if col not in df.index and col not in df.columns:
+            continue
+
+        if method == "sum":
+            df.loc[col] = df.loc[col].round(0)
+        else:
+            df.loc[col] = df.loc[col].round(2)
+
+    return df
+
+def export_to_ods(file_name, sheets: dict):
+    with pd.ExcelWriter(file_name, engine="odf") as writer:
+        for name, df in sheets.items():
+            safe_name = str(name)[:31]
+            df.to_excel(writer, sheet_name=safe_name, index=True)
+
+# =========================
+# CORE REPORT BUILDER
+# =========================
+
+def build_pivot_report(df, group_cols, metric=None, agg_dict=None, years=None):
+    df = apply_filters(df, years)
+
+    base = df.groupby(group_cols + ["alapadat_ev"]).agg(agg_dict).reset_index()
+
+    if metric:
+        pivot = base.pivot_table(
+            values=metric,
+            index=group_cols,
+            columns="alapadat_ev",
+            fill_value=0
+        )
+    else:
+        pivot = base.pivot_table(
+            values=list(agg_dict.keys()),
+            index=group_cols,
+            columns="alapadat_ev",
+            fill_value=0
+        )
+
+    pivot = pivot.sort_index(axis=1)
+
+    if pivot.shape[1] < 2:
+        return pivot
+
+    first, last = pivot.columns[0], pivot.columns[-1]
+
+    diff = pivot.diff(axis=1).iloc[:, 1:]
+    pct = safe_div(diff, pivot.iloc[:, :-1].values)
+
+    result = pd.concat([pivot, diff, pct], axis=1)
+
+    result[f"Total diff ({first}-{last})"] = pivot[last] - pivot[first]
+    result[f"Total % ({first}-{last})"] = safe_div(
+        pivot[last] - pivot[first], pivot[first]
+    )
+
+    return result
+
+# =========================
+# REPORT FUNCTIONS
+# =========================
+
+def report_single_metric(df, cfg):
+    df = apply_filters(
+        df,
+        cfg.get("years"),
+        cfg.get("group_col"),
+        cfg.get("filter_values")
+    )
+
+    agg_dict = AGG_MAP[cfg["agg"]]
+
+    return build_pivot_report(
+        df,
+        group_cols=[cfg["group_col"]],
+        metric=cfg["metric"],
+        agg_dict=agg_dict,
+        years=cfg.get("years")
+    )
+
+def report_multi_metric(df, cfg):
+    df = apply_filters(df, cfg.get("years"))
+    agg_dict = AGG_MAP[cfg["agg"]]
+
+    base = aggregate(df, [cfg["group_col"], "alapadat_ev"], agg_dict)
+
+    return base.pivot_table(
+        values=list(agg_dict.keys()),
+        index=cfg["group_col"],
+        columns="alapadat_ev",
+        fill_value=0
+    )
+
+def report_entity(df, cfg):
+    df = df[df[cfg["group_col"]] == cfg["entity"]]
+    df = apply_filters(df, cfg.get("years"))
+
+    if df.empty:
+        raise ValueError("Nincs adat.")
+
+    agg_dict = AGG_MAP[cfg["agg"]]
+
+    report = df.groupby("alapadat_ev").agg(agg_dict).T
+
+    if report.shape[1] >= 2:
+        first, last = report.columns[0], report.columns[-1]
+        report["diff"] = report[last] - report[first]
+        report["pct"] = safe_div(report["diff"], report[first])
+
+    return round_by_agg(report, agg_dict)
+
+def report_totals(df, cfg):
+    df = apply_filters(df, cfg.get("years"))
+    agg_dict = AGG_MAP[cfg["agg"]]
+
+    totals = df.groupby('alapadat_ev').agg(agg_dict)
+    counts = df.groupby('alapadat_ev')['park_ID'].nunique()
+
+    result = {}
+
+    for year in totals.index:
+        total_vals = totals.loc[year]
+        avg_vals = total_vals / counts[year]
+
+        result[(year, "total")] = total_vals
+        result[(year, "per_park")] = avg_vals
+
+    return pd.DataFrame(result)
+
+def report_contacts(cfg):
+    db = cfg["db"]
+
+    with get_conn(db) as conn:
+        base = pd.read_sql("SELECT park_ID, park_nev, park_email FROM park_base", conn)
+        management = pd.read_sql("SELECT park_ID, management_nev, management_email, management_tel FROM management_latest", conn)
+
+    df_contacts = base.merge(management, on="park_ID", how="left")
+
+    emails = pd.concat([
+        df_contacts["park_email"],
+        df_contacts["management_email"]
+    ]).dropna().drop_duplicates()
+
+    return {
+        "emailek": pd.DataFrame({"email": emails}),
+        "park_kapcsolatok": df_contacts.drop(columns="park_ID")
+    }
+
+def report_missing_reports(cfg):
+    db = cfg["db"]
+    year = cfg["year"]
+
+    with get_conn(db) as conn:
+        base = pd.read_sql(
+            "SELECT park_ID, park_nev, park_email, management_email FROM park_base",
+            conn
+        )
+        submitted = pd.read_sql(
+            "SELECT DISTINCT park_ID FROM vallalkozasok_latest WHERE alapadat_ev = ?",
+            conn,
+            params=(year,)
+        )
+
+    df_missing = base[~base["park_ID"].isin(submitted["park_ID"])]
+
+    emails = pd.concat([
+        df_missing["park_email"],
+        df_missing["management_email"]
+    ]).dropna().drop_duplicates()
+
+    return {
+        "parkok": df_missing[["park_nev"]].drop_duplicates(),
+        "emailek": pd.DataFrame({"email": emails}),
+        "park-email": df_missing.drop_duplicates()
+    }
+
+# =========================
+# DISPATCHER
+# =========================
+
+REPORT_FUNCTIONS = {
+    "single_metric": report_single_metric,
+    "multi_metric": report_multi_metric,
+    "entity": report_entity,
+    "totals": report_totals,
+    "contacts": report_contacts,
+    "missing_reports": report_missing_reports
+}
+
+def run_report(df, cfg):
+    report_type = cfg["type"]
+
+    if report_type not in REPORT_FUNCTIONS:
+        raise ValueError(f"Unknown type: {report_type}")
+
+    func = REPORT_FUNCTIONS[report_type]
+
+    # some functions need df, some don't
+    try:
+        return func(df, cfg)
+    except TypeError:
+        return func(cfg)
+
+# =========================
+# RUNNER
+# =========================
+
+def run_reports(df, reports, output_prefix="report"):
+    for cfg in reports:
+        result = run_report(df, cfg)
+
+        file_name = f"{output_prefix}_{cfg['name']}.ods"
+
+        if isinstance(result, dict):
+            export_to_ods(file_name, result)
+        else:
+            export_to_ods(file_name, {cfg["name"]: result})
+
+# =========================
+# USAGE
+# =========================
+
+if __name__ == "__main__":
+
+    db = "ip.db"
+    df = load_data(db)
+
+    REPORTS = [
+        {"name": "contacts", "type": "contacts", "db": db},
+        {"name": "missing_2024", "type": "missing_reports", "db": db, "year": 2024},
+        {
+            "name": "arbevetel_regio",
+            "type": "single_metric",
+            "group_col": "park_regio",
+            "metric": "arbevetel",
+            "years": [2022, 2023, 2024],
+            "agg": "full"
+        }
+    ]
+
+    run_reports(df, REPORTS)
