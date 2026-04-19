@@ -24,8 +24,9 @@ CREATE TABLE "alapadat" (
 	"park_honlap"	TEXT,
 	"cimviselo_ID"	INTEGER,
 	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
+	"alapadat_ev"	INTEGER,
 	PRIMARY KEY("park_ID","datum"),
-	FOREIGN KEY("cimviselo_ID") REFERENCES "cimviselo_azonosito"("cimviselo_ID"),
+	FOREIGN KEY("cimviselo_ID") REFERENCES "cimviselo"("cimviselo_ID"),
 	FOREIGN KEY("park_ID") REFERENCES "park_azonosito"("park_ID")
 );
 CREATE TABLE "cimviselo" (
@@ -101,6 +102,7 @@ CREATE TABLE "kapcsolatok" (
 	"oktatas_felso"	TEXT,
 	"kutatointezet"	TEXT,
 	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
+	"kapcsolatok_ev"	INTEGER,
 	PRIMARY KEY("park_ID","datum"),
 	FOREIGN KEY("park_ID") REFERENCES "park_azonosito"("park_ID")
 );
@@ -154,6 +156,7 @@ CREATE TABLE "terulet" (
 	"berbeadott_ter_arany"	REAL,
 	"eladott_ter_arany"	REAL,
 	"datum"	TEXT DEFAULT CURRENt_TIMESTAMP,
+	"terulet_ev"	INTEGER,
 	PRIMARY KEY("datum","park_ID"),
 	FOREIGN KEY("park_ID") REFERENCES "park_azonosito"("park_ID")
 );

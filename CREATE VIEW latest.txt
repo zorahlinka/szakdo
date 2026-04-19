@@ -1,132 +1,300 @@
-CREATE VIEW vallalkozasok_latest AS
-SELECT*,
-    vallalkozasok_ev AS alapadat_ev
-FROM (
-    SELECT *,
-           ROW_NUMBER() OVER (
-               PARTITION BY park_ID, vallalkozasok_ev
-               ORDER BY datum DESC
-           ) AS rn
-    FROM vallalkozasok
-)
-WHERE rn = 1;
-
-CREATE VIEW terulet_latest AS
-SELECT*, 
-    terulet_ev AS alapadat_ev
-FROM (
-    SELECT *,
-           ROW_NUMBER() OVER (
-               PARTITION BY park_ID, terulet_ev
-               ORDER BY datum DESC
-           ) AS rn
-    FROM terulet
-)
-WHERE rn = 1;
-
-CREATE VIEW infrastrukturafejlesztes_latest AS
-SELECT*, 
-    felhasznalas_ev AS alapadat_ev
-FROM (
-    SELECT *,
-           ROW_NUMBER() OVER (
-               PARTITION BY park_ID, felhasznalas_ev
-               ORDER BY datum DESC
-           ) AS rn
-    FROM infrastrukturafejlesztes
-)
-WHERE rn = 1;
-
-CREATE VIEW EU_tamogatas_latest AS
-SELECT*, 
-    tamogatas_ev AS alapadat_ev
-FROM (
-    SELECT *,
-           ROW_NUMBER() OVER (
-               PARTITION BY park_ID, tamogatas_ev, tamogatas_tartalom
-               ORDER BY datum DESC
-           ) AS rn
-    FROM EU_tamogatas
-)
-WHERE rn = 1;
-
-CREATE VIEW kapcsolatok_latest AS
-SELECT*, 
-    kapcsolatok_ev AS alapadat_ev
-FROM (
-    SELECT *,
-           ROW_NUMBER() OVER (
-               PARTITION BY park_ID, kapcsolatok_ev
-               ORDER BY datum DESC
-           ) AS rn
-    FROM kapcsolatok
-)
-WHERE rn = 1;
-
-CREATE VIEW alapadat_latest AS
-SELECT* 
-FROM (
-    SELECT *,
-           ROW_NUMBER() OVER (
-               PARTITION BY park_ID, alapadat_ev
-               ORDER BY datum DESC
-           ) AS rn
-    FROM alapadat
-)
-WHERE rn = 1;
-
-CREATE VIEW management_latest AS
-SELECT*    
-FROM (
-    SELECT *,
-           ROW_NUMBER() OVER (
-               PARTITION BY park_ID, management_email
-               ORDER BY datum DESC
-           ) AS rn
-    FROM management
-)
-WHERE rn = 1;
-
+A riportok alapját képező egyesített nézet
 CREATE VIEW park_base AS
 SELECT 
     p.park_ID,
     p.park_nev,
-
     a.park_regio,
     a.park_varmegye,
     a.alapadat_ev,
     a.park_email,
-
     m.management_email
-
 FROM park_azonosito p
+LEFT JOIN alapadat_latest a ON p.park_ID = a.park_ID
+LEFT JOIN management_latest m ON p.park_ID = m.park_ID;
 
-LEFT JOIN alapadat_latest a 
-    ON p.park_ID = a.park_ID
 
-LEFT JOIN management_latest m
-    ON p.park_ID = m.park_ID;
+1. vallalkozasok_latest
+CREATE VIEW vallalkozasok_latest AS
+SELECT v.*, v.vallalkozasok_ev AS alapadat_ev
+FROM vallalkozasok v
+JOIN (
+    SELECT park_ID, vallalkozasok_ev, MAX(datum) AS max_datum
+    FROM vallalkozasok
+    GROUP BY park_ID, vallalkozasok_ev
+) m
+ON v.park_ID = m.park_ID
+AND v.vallalkozasok_ev = m.vallalkozasok_ev
+AND v.datum = m.max_datum;
 
+2. terulet_latest
+CREATE VIEW terulet_latest AS
+SELECT t.*, t.terulet_ev AS alapadat_ev
+FROM terulet t
+JOIN (
+    SELECT park_ID, terulet_ev, MAX(datum) AS max_datum
+    FROM terulet
+    GROUP BY park_ID, terulet_ev
+) m
+ON t.park_ID = m.park_ID
+AND t.terulet_ev = m.terulet_ev
+AND t.datum = m.max_datum;
+
+3. infrastrukturafejlesztes_latest
+CREATE VIEW infrastrukturafejlesztes_latest AS
+SELECT i.*, i.felhasznalas_ev AS alapadat_ev
+FROM infrastrukturafejlesztes i
+JOIN (
+    SELECT park_ID, felhasznalas_ev, MAX(datum) AS max_datum
+    FROM infrastrukturafejlesztes
+    GROUP BY park_ID, felhasznalas_ev
+) m
+ON i.park_ID = m.park_ID
+AND i.felhasznalas_ev = m.felhasznalas_ev
+AND i.datum = m.max_datum;
+
+4. EU_tamogatas_latest
+CREATE VIEW EU_tamogatas_latest AS
+SELECT e.*, e.tamogatas_ev AS alapadat_ev
+FROM EU_tamogatas e
+JOIN (
+    SELECT park_ID, tamogatas_ev, tamogatas_tartalom, MAX(datum) AS max_datum
+    FROM EU_tamogatas
+    GROUP BY park_ID, tamogatas_ev, tamogatas_tartalom
+) m
+ON e.park_ID = m.park_ID
+AND e.tamogatas_ev = m.tamogatas_ev
+AND e.tamogatas_tartalom = m.tamogatas_tartalom
+AND e.datum = m.max_datum;
+
+5. kapcsolatok_latest
+CREATE VIEW kapcsolatok_latest AS
+SELECT k.*, k.kapcsolatok_ev AS alapadat_ev
+FROM kapcsolatok k
+JOIN (
+    SELECT park_ID, kapcsolatok_ev, MAX(datum) AS max_datum
+    FROM kapcsolatok
+    GROUP BY park_ID, kapcsolatok_ev
+) m
+ON k.park_ID = m.park_ID
+AND k.kapcsolatok_ev = m.kapcsolatok_ev
+AND k.datum = m.max_datum;
+
+6. alapadat_latest
+CREATE VIEW alapadat_latest AS
+SELECT a.*
+FROM alapadat a
+JOIN (
+    SELECT park_ID, alapadat_ev, MAX(datum) AS max_datum
+    FROM alapadat
+    GROUP BY park_ID, alapadat_ev
+) m
+ON a.park_ID = m.park_ID
+AND a.alapadat_ev = m.alapadat_ev
+AND a.datum = m.max_datum;
+
+7. management_latest
+CREATE VIEW management_latest AS
+SELECT m1.*
+FROM management m1
+JOIN (
+    SELECT park_ID, management_email, MAX(datum) AS max_datum
+    FROM management
+    GROUP BY park_ID, management_email
+) m2
+ON m1.park_ID = m2.park_ID
+AND m1.management_email = m2.management_email
+AND m1.datum = m2.max_datum;
+8. infrastruktura_latest
 CREATE VIEW infrastruktura_latest AS
-SELECT*
-FROM (
-    SELECT *,
-           ROW_NUMBER() OVER (
-               PARTITION BY park_ID, infra_ID
-               ORDER BY datum DESC
-           ) AS rn
+SELECT i1.*
+FROM infrastruktura i1
+JOIN (
+    SELECT park_ID, infra_ID, MAX(datum) AS max_datum
     FROM infrastruktura
-)
-WHERE rn = 1;
+    GROUP BY park_ID, infra_ID
+) m
+ON i1.park_ID = m.park_ID
+AND i1.infra_ID = m.infra_ID
+AND i1.datum = m.max_datum;
 
+9. szolgaltatas_latest
 CREATE VIEW szolgaltatas_latest AS
-SELECT*
-FROM (
-    SELECT *,
-           ROW_NUMBER() OVER (
-               PARTITION BY park_ID, szolg_ID
-               ORDER BY datum DESC
-           ) AS rn
+SELECT s1.*
+FROM szolgaltatas s1
+JOIN (
+    SELECT park_ID, szolg_ID, MAX(datum) AS max_datum
     FROM szolgaltatas
-)
-WHERE rn = 1;
+    GROUP BY park_ID, szolg_ID
+) m
+ON s1.park_ID = m.park_ID
+AND s1.szolg_ID = m.szolg_ID
+AND s1.datum = m.max_datum;
+
+
+
+TEMPLATES
+
+Általános minta (template)
+CREATE VIEW <tabla_nev>_latest AS
+SELECT 
+    t.*,
+    t.<ev_oszlop> AS alapadat_ev
+FROM <tabla_nev> t
+JOIN (
+    SELECT 
+        park_ID, 
+        <ev_oszlop>, 
+        MAX(datum) AS max_datum
+    FROM <tabla_nev>
+    GROUP BY 
+        park_ID, 
+        <ev_oszlop>
+) m
+ON t.park_ID = m.park_ID
+AND t.<ev_oszlop> = m.<ev_oszlop>
+AND t.datum = m.max_datum;
+
+
+Ha van extra dimenzió (pl. kategória)
+Pl. tamogatas_tartalom
+
+CREATE VIEW <tabla_nev>_latest AS
+SELECT 
+    t.*,
+    t.<ev_oszlop> AS alapadat_ev
+FROM <tabla_nev> t
+JOIN (
+    SELECT 
+        park_ID, 
+        <ev_oszlop>, 
+        <extra_oszlop>, 
+        MAX(datum) AS max_datum
+    FROM <tabla_nev>
+    GROUP BY 
+        park_ID, 
+        <ev_oszlop>, 
+        <extra_oszlop>
+) m
+ON t.park_ID = m.park_ID
+AND t.<ev_oszlop> = m.<ev_oszlop>
+AND t.<extra_oszlop> = m.<extra_oszlop>
+AND t.datum = m.max_datum;
+
+
+Ha nem év-alapú (pl. ID szerint latest)
+(pl. infrastruktúra, szolgáltatás)
+
+CREATE VIEW <tabla_nev>_latest AS
+SELECT t.*
+FROM <tabla_nev> t
+JOIN (
+    SELECT 
+        park_ID, 
+        <id_oszlop>, 
+        MAX(datum) AS max_datum
+    FROM <tabla_nev>
+    GROUP BY 
+        park_ID, 
+        <id_oszlop>
+) m
+ON t.park_ID = m.park_ID
+AND t.<id_oszlop> = m.<id_oszlop>
+AND t.datum = m.max_datum;
+
+Itt nem kell alapadat_ev, mert nem idődimenzió mentén join.
+
+
+
+
+
+
+
+
+
+-- 1. Vállalkozások legfrissebb adatai
+CREATE VIEW vallalkozasok_latest AS
+SELECT *, vallalkozasok_ev AS alapadat_ev
+FROM (
+    SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY park_ID, vallalkozasok_ev
+        ORDER BY datum DESC, rowid DESC
+    ) AS rn FROM vallalkozasok
+) WHERE rn = 1;
+
+-- 2. Terület legfrissebb adatai
+CREATE VIEW terulet_latest AS
+SELECT *, terulet_ev AS alapadat_ev
+FROM (
+    SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY park_ID, terulet_ev
+        ORDER BY datum DESC, rowid DESC
+    ) AS rn FROM terulet
+) WHERE rn = 1;
+
+-- 3. Infrastruktúra-fejlesztés legfrissebb adatai
+CREATE VIEW infrastrukturafejlesztes_latest AS
+SELECT *, felhasznalas_ev AS alapadat_ev
+FROM (
+    SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY park_ID, felhasznalas_ev
+        ORDER BY datum DESC, rowid DESC
+    ) AS rn FROM infrastrukturafejlesztes
+) WHERE rn = 1;
+
+-- 4. EU támogatások legfrissebb adatai (tartalom szerint is bontva)
+CREATE VIEW EU_tamogatas_latest AS
+SELECT *, tamogatas_ev AS alapadat_ev
+FROM (
+    SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY park_ID, tamogatas_ev, tamogatas_tartalom
+        ORDER BY datum DESC, rowid DESC
+    ) AS rn FROM EU_tamogatas
+) WHERE rn = 1;
+
+-- 5. Kapcsolatok legfrissebb adatai
+CREATE VIEW kapcsolatok_latest AS
+SELECT *, kapcsolatok_ev AS alapadat_ev
+FROM (
+    SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY park_ID, kapcsolatok_ev
+        ORDER BY datum DESC, rowid DESC
+    ) AS rn FROM kapcsolatok
+) WHERE rn = 1;
+
+-- 6. Alapadatok legfrissebb állapota
+CREATE VIEW alapadat_latest AS
+SELECT * FROM (
+    SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY park_ID, alapadat_ev
+        ORDER BY datum DESC, rowid DESC
+    ) AS rn FROM alapadat
+) WHERE rn = 1;
+
+-- 7. Management elérhetőségek (emailenként a legfrissebb)
+CREATE VIEW management_latest AS
+SELECT * FROM (
+    SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY park_ID, management_email
+        ORDER BY datum DESC, rowid DESC
+    ) AS rn FROM management
+) WHERE rn = 1;
+
+-- 8. Infrastruktúra típusok legfrissebb állapota
+CREATE VIEW infrastruktura_latest AS
+SELECT * FROM (
+    SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY park_ID, infra_ID
+        ORDER BY datum DESC, rowid DESC
+    ) AS rn FROM infrastruktura
+) WHERE rn = 1;
+
+-- 9. Szolgáltatások legfrissebb állapota
+CREATE VIEW szolgaltatas_latest AS
+SELECT * FROM (
+    SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY park_ID, szolg_ID
+        ORDER BY datum DESC, rowid DESC
+    ) AS rn FROM szolgaltatas
+) WHERE rn = 1;
+
+

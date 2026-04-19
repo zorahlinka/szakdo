@@ -1,5 +1,3 @@
-from email import errors
-
 import pandas as pd
 import sqlite3
 from thefuzz import process, fuzz
@@ -7,8 +5,7 @@ from thefuzz import process, fuzz
 
 excel_file = '/home/peti/Dokumentumok/gdf/kerdoiv/kerdoiv_valasz_1.ods'
 db = '/home/peti/Dokumentumok/gdf/adatbazis/IP'
-sheets_to_read = ['Adatok', 'Management', 'Elnyert EU-s támogatás', 'Infrastruktúra', 'Szolgáltatások']
-
+sheets = ['Adatok', 'Management', 'Elnyert EU-s támogatás', 'Infrastruktúra', 'Szolgáltatások']
 
 column_mapping = {
     'Ipari Park neve': 'park_nev',
@@ -16,6 +13,7 @@ column_mapping = {
     'Technológiai park cím elnyerésének éve': 'tp_cimszerzes',
     'Email': 'park_email',
     'Honlap': 'park_honlap',
+    'Mely évre vonatkoznak az általános adatok?': 'alapadatok_ev',
     'Címviselő szervezet neve': 'cimviselo_nev',
     'Címviselő szervezet foglalkoztatottak száma': 'cimviselo_foglalkoztatott',
     'Címviselő szervezet címe': 'cimviselo_cim',
@@ -39,6 +37,7 @@ column_mapping = {
     'Zöldterületek, parkok (m2)': 'zoldterulet',
     'Betelpített területeit bérbe adja (%)': 'berbeadott_ter_arany',
     'Betelepített területeit eladta (%)': 'eladott_ter_arany',
+    'Mely évre vonatkoznak a területi adatok?': 'terulet_ev',
     'Kamarák': 'kamara',
     'Klaszterek': 'klaszter',
     'Középfokú oktatási intézmények': 'oktatas_kozep',
@@ -49,6 +48,7 @@ column_mapping = {
     'Állami fejlesztési ügynökségek': 'fejlesztesi_ugynokseg',
     'Magyar Exportfejlesztési Ügynökség': 'export_ugynokseg',
     'Külföldi ipari park': 'kulfoldi_ip',
+    'Mely évre vonatkoznak a kapcsolati adatok?': 'kapcsolatok_ev',
     'Részvétel nemzetközi projektekben': 'nemzetkozi_projekt',
     'Együttműködés felsőoktatási intézménnyel': 'oktatas_felso',
     'Együttműködés kutatóintézettel': 'kutatointezet',
@@ -110,6 +110,110 @@ allapot_map = {
     'Felújítandó': '3'
 }
 
+TABLES = {
+    "park_azonosito": ("Adatok", ["park_nev"]),
+    "cimviselo_azonosito": ("Adatok", ["cimviselo_nev"]),
+
+    "cimviselo": ("Adatok", [
+        "cimviselo_foglalkoztatott",
+        "cimviselo_cim",
+        "osszetetel_allam",
+        "osszetetel_onkormanyzat",
+        "osszetetel_belfoldi_magan",
+        "osszetetel_kulfoldi",
+        "osszetetel_egyeb"
+    ]),
+
+    "alapadat": ("Adatok", [
+        "ip_cimszerzes",
+        "tp_cimszerzes",
+        "park_email",
+        "park_telepules",
+        "park_utca",
+        "park_iranyitoszam",
+        "park_varmegye",
+        "park_hrsz",
+        "park_regio",
+        "sajat_szolg_arany",
+        "kiszervezett_szolg_arany",
+        "park_honlap",
+        "alapadat_ev"
+    ]),
+
+    "management": ("Management", [
+        "management_nev",
+        "jognyilatkozat",
+        "operativ",
+        "management_beosztas",
+        "management_tel",
+        "management_email",
+        "management_kezdet",
+        "management_vege"
+    ]),
+
+    "EU_tamogatas": ("Elnyert EU-s támogatás", [
+        "op",
+        "tamogatas_ev",
+        "tamogatas_tartalom",
+        "intenzitas",
+        "EU_osszkoltseg"
+    ]),
+
+    "infrastruktura": ("Infrastruktúra", [
+        "infra_tipus",
+        "infra_nev",
+        "kapacitas",
+        "ellatott_ter",
+        "allapot",
+        "terv_fejlesztes_ev",
+        "terv_forras"
+    ]),
+
+    "szolgaltatas": ("Szolgáltatások", [
+        "szolg_tipus",
+        "szolg_nev",
+        "szolg_tartalom",
+        "szolgaltato_fajta",
+        "szolgaltato_nev",
+        "szolg_kezdet"
+    ]),
+
+    "helyrajzi_szam": ("Adatok", ["park_hrsz"]),
+
+    "kapcsolatok": ("Adatok", [
+        "kamara",
+        "klaszter",
+        "oktatas_kozep",
+        "munkaugy",
+        "civil",
+        "ip",
+        "onkormanyzat",
+        "fejlesztesi_ugynokseg",
+        "export_ugynokseg",
+        "kulfoldi_ip",
+        "nemzetkozi_projekt",
+        "oktatas_felso",
+        "kutatointezet",
+        "kf_tevekenyseg",
+        "uj_technologia",
+        "kapcsolatok_ev"
+    ]),
+
+    "terulet": ("Adatok", [
+        "osszterulet",
+        "hasznosithato_ter",
+        "beepitett_ter",
+        "hasznosithato_szabad_ter",
+        "hasznosithato_szabad_arany",
+        "parkolo",
+        "zoldterulet",
+        "berbeadott_ter_arany",
+        "eladott_ter_arany",
+        "terulet_ev"
+    ])
+}
+
+
 # listák az adatellenőrzéshez
 park_varmegye = ['Bács-Kiskun', 'Baranya', 'Békés', 'Borsod-Abaúj-Zemplén', 'Csongrád-Csanád', 'Fejér', 'Győr-Moson-Sopron', 'Hajdú-Bihar', 'Heves', 'Jász-Nagykun-Szolnok', 'Komárom-Esztergom', 'Nógrád', 'Pest', 'Somogy', 'Szabolcs-Szatmár-Bereg', 'Tolna', 'Vas', 'Veszprém', 'Zala', 'Budapest']
 park_regio = ['Közép-Magyarország', 'Közép-Dunántúl', 'Nyugat-Dunántúl', 'Dél-Dunántúl', 'Észak-Magyarország', 'Észak-Alföld', 'Dél-Alföld']
@@ -121,7 +225,7 @@ val_rules = {
     "text_255": ["Ipari Park neve", "Címviselő szervezet neve", "Címviselő szervezet címe", "Település", "Út/utca", "Felelős neve", "Beosztása", "Operatív program", "Infrastruktúra típusa", "Infrastruktúra neve", "Szolgáltatás típusa", "Szolgáltatás neve", "Szolgáltató szervezet neve"],
     "text_500": ["Szolgáltatás tartalma", "Projekt tartalom" ],
     "date": ["Management kezdete", "Management vége"],
-    "year_max": ["Ipari park cím elnyerésének éve", "Technológiai park cím elnyerésének éve", "Mely évre vonatkoznak az adatok?", "Felhasználás éve", "Szolgáltatás kezdete", "Odaítélés éve",],
+    "year_max": ["Ipari park cím elnyerésének éve", "Technológiai park cím elnyerésének éve", "Mely évre vonatkoznak az adatok?", "Felhasználás éve", "Szolgáltatás kezdete", "Odaítélés éve", "Mely évre vonatkoznak a kapcsolati adatok?", "Mely évre vonatkoznak a területi adatok?", "Mely évre vonatkoznak az általános adatok?"],
     "year_min": ["Tervezett fejlesztés éve",],
     "email": ["Email", "Felelős e-mail",],
     "percentage": ["Állami", "Önkormányzati", "Belföldi magán", "Külföldi", "Egyéb", "Hasznosítható szabad terület aránya (%)", "Betelepített területeit bérbe adja (%)", "Betelepített területeit eladta (%)", "Maga nyújtja (%)", "Kiszervezi (%)", "Exportarány (%)", "Támogatási intenzitás"],
@@ -135,9 +239,9 @@ val_rules = {
 }
 
 # beolvasás
-def read_excel(excel_file, sheets_to_read):
+def read_excel(excel_file, SHEETS):
     try:   
-        return pd.read_excel(excel_file, sheet_name=sheets_to_read, engine='odf')
+        return pd.read_excel(excel_file, sheet_name=sheets, engine='odf')
     except Exception as e:
         print(f"Hiba történt az Excel fájl beolvasása során: {e}")
         return None 
@@ -250,7 +354,7 @@ def transform_write_to_db(db, all_data, column_mapping, allapot_map):
     table_park_azonosito_data = df_adatok[['park_nev']].copy(),
     table_cimviselo_azonosito_data = df_adatok[['cimviselo_nev']].copy(),    
     table_cimviselo_data = df_adatok[['cimviselo_foglalkoztatott', 'cimviselo_cim', 'osszetetel_allam', 'osszetetel_onkormanyzat', 'osszetetel_belfoldi_magan', 'osszetetel_kulfoldi', 'osszetetel_egyeb',]].copy(),
-    table_alapadat_data = df_adatok[['ip_cimszerzes', 'tp_cimszerzes', 'park_email', 'park_telepules', 'park_utca', 'park_iranyitoszam', 'park_varmegye', 'park_hrsz', 'park_regio', 'sajat_szolg_arany' , 'kiszervezett_szolg_arany', 'park_honlap']].copy(),
+    table_alapadat_data = df_adatok[['ip_cimszerzes', 'tp_cimszerzes', 'park_email', 'park_telepules', 'park_utca', 'park_iranyitoszam', 'park_varmegye', 'park_hrsz', 'park_regio', 'sajat_szolg_arany' , 'kiszervezett_szolg_arany', 'park_honlap', 'alapadat_ev']].copy(),
     table_management_data = df_management[['management_nev', 'jognyilatkozat', 'operativ', 'management_beosztas', 'management_tel', 'management_email', 'management_kezdet', 'management_vege']].copy(),
     table_EU_tamogatas_data = df_EU_tamogatas[['op', 'tamogatas_ev', 'tamogatas_tartalom', 'intenzitas', 'EU_osszkoltseg']].copy(),
     table_vallalkozasok_data = df_adatok[['vallalkozasok_terulet', 'vallalkozasok_szama', 'vallalkozasok_foglalkoztatott', 'beruhazasi_ertek', 'arbevetel', 'exportarany', 'kkv_szam', 'nagyvall_szam', 'egyeb_vall_szam', 'vallalkozasok_ev']].copy(),
@@ -260,8 +364,8 @@ def transform_write_to_db(db, all_data, column_mapping, allapot_map):
     table_szolg_fajta_data = df_szolgaltatasok[['szolg_tipus','szolg_nev']].copy(),
     table_szolgaltatasok_data = df_szolgaltatasok[['szolg_tipus','szolg_nev','szolg_tartalom','szolgaltato_fajta','szolgaltato_nev','szolg_kezdet']].copy(),
     table_helyrajzi_szam_data = df_adatok['park_hrsz'].astype(str).str.split(',').explode().str.strip().to_frame(name='park_hrsz').copy(),
-    table_kapcsolatok_data = df_adatok[['kamara', 'klaszter', 'oktatas_kozep', 'munkaugy', 'civil', 'ip', 'onkormanyzat', 'fejlesztesi_ugynokseg', 'export_ugynokseg', 'kulfoldi_ip', 'nemzetkozi_projekt', 'oktatas_felso', 'kutatointezet', 'kf_tevekenyseg', 'uj_technologia']].copy()
-    table_terulet_data = df_adatok[['osszterulet', 'hasznosithato_ter', 'beepitett_ter', 'hasznosithato_szabad_ter', 'hasznosithato_szabad_arany', 'parkolo', 'zoldterulet', 'berbeadott_ter_arany', 'eladott_ter_arany']].copy()
+    table_kapcsolatok_data = df_adatok[['kamara', 'klaszter', 'oktatas_kozep', 'munkaugy', 'civil', 'ip', 'onkormanyzat', 'fejlesztesi_ugynokseg', 'export_ugynokseg', 'kulfoldi_ip', 'nemzetkozi_projekt', 'oktatas_felso', 'kutatointezet', 'kf_tevekenyseg', 'uj_technologia', 'kapcsolatok_ev']].copy()
+    table_terulet_data = df_adatok[['osszterulet', 'hasznosithato_ter', 'beepitett_ter', 'hasznosithato_szabad_ter', 'hasznosithato_szabad_arany', 'parkolo', 'zoldterulet', 'berbeadott_ter_arany', 'eladott_ter_arany', 'terulet_ev']].copy()
 
 
     conn = sqlite3.connect(db)
@@ -301,27 +405,19 @@ def transform_write_to_db(db, all_data, column_mapping, allapot_map):
             table_cimviselo_data['cimviselo_ID'] = cimviselo_id
             table_cimviselo_data.to_sql('cimviselo', conn, if_exists='append', index=False)
 
+            tables = {
+                'management': table_management_data,
+                'vallalkozasok': table_vallalkozasok_data,
+                'infrastrukturafejlesztes': table_infrastrukturafejlesztes_data,
+                'EU_tamogatas': table_EU_tamogatas_data,
+                'helyrajzi_szam': table_helyrajzi_szam_data,
+                'kapcsolatok': table_kapcsolatok_data,
+                'terulet': table_terulet_data
+            }
 
-            table_management_data['park_ID'] = park_id
-            table_management_data.to_sql('management', conn, if_exists='append', index=False)
-
-            table_vallalkozasok_data['park_ID'] = park_id
-            table_vallalkozasok_data.to_sql('vallalkozasok', conn, if_exists='append', index=False)
-
-            table_infrastrukturafejlesztes_data['park_ID'] = park_id
-            table_infrastrukturafejlesztes_data.to_sql('infrastrukturafejlesztes', conn, if_exists='append', index=False)
-
-            table_EU_tamogatas_data['park_ID'] = park_id
-            table_EU_tamogatas_data.to_sql('EU_tamogatas', conn, if_exists='append', index=False)   
-        
-            table_helyrajzi_szam_data['park_ID'] = park_id
-            table_helyrajzi_szam_data.to_sql('helyrajzi_szam', conn, if_exists='append', index=False)
-
-            table_kapcsolatok_data['park_ID'] = park_id
-            table_kapcsolatok_data.to_sql('kapcsolatok', conn, if_exists='append', index=False)
-
-            table_terulet_data['park_ID'] = park_id
-            table_terulet_data.to_sql('terulet', conn, if_exists='append', index=False)
+            for name, df in tables.items():
+                df['park_ID'] = park_id
+                df.to_sql(name, conn, if_exists='append', index=False)
 
 
 #az infra_fajta adatokat csak első alkalommal kell bevinni
@@ -354,7 +450,7 @@ def transform_write_to_db(db, all_data, column_mapping, allapot_map):
     finally:
         conn.close()    
 
-
+# ezt majd run-ba belerakni
 all_data = read_excel(excel_file, sheets_to_read)
 validation_errors = data_validation(all_data)
 if not validation_errors:
