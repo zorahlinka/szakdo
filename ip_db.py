@@ -1,11 +1,9 @@
 import pandas as pd
 import sqlite3
+import datetime
 from thefuzz import process, fuzz
 
-
-excel_file = '/home/peti/Dokumentumok/gdf/kerdoiv/kerdoiv_valasz_1.ods'
-db = '/home/peti/Dokumentumok/gdf/adatbazis/IP'
-sheets = ['Adatok', 'Management', 'Elnyert EU-s támogatás', 'Infrastruktúra', 'Szolgáltatások']
+sheets_to_read = ['Adatok', 'Management', 'Elnyert EU-s támogatás', 'Infrastruktúra', 'Szolgáltatások']
 
 column_mapping = {
     'Ipari Park neve': 'park_nev',
@@ -13,7 +11,7 @@ column_mapping = {
     'Technológiai park cím elnyerésének éve': 'tp_cimszerzes',
     'Email': 'park_email',
     'Honlap': 'park_honlap',
-    'Mely évre vonatkoznak az általános adatok?': 'alapadatok_ev',
+    'Mely évre vonatkoznak az általános adatok?': 'alapadat_ev',
     'Címviselő szervezet neve': 'cimviselo_nev',
     'Címviselő szervezet foglalkoztatottak száma': 'cimviselo_foglalkoztatott',
     'Címviselő szervezet címe': 'cimviselo_cim',
@@ -26,7 +24,7 @@ column_mapping = {
     'Út/utca': 'park_utca',
     'Irányítószám': 'park_iranyitoszam',
     'Vármegye': 'park_varmegye',
-    'Helyrajzi szám': 'park_hrsz',
+    'Helyrajzi szám': 'park_hrsz',  
     'Régió': 'park_regio',
     'Összterület (ha)': 'osszterulet',
     'Hasznosítható terület (ha)': 'hasznosithato_ter',
@@ -82,8 +80,8 @@ column_mapping = {
     'Beosztása': 'management_beosztas',
     'Telefon': 'management_tel',
     'Felelős e-mail': 'management_email',
-    'Megbízatás kezdete': 'management_kezdet',
-    'Megbízatás vége': 'management_vege',
+    'Megbízatás kezdete (ha ismert)': 'management_kezdet',
+    'Megbízatás vége (ha ismert)': 'management_vege',
     'Operatív program': 'op',
     'Odaítélés éve': 'tamogatas_ev',
     'Projekt tartalom': 'tamogatas_tartalom',
@@ -104,130 +102,20 @@ column_mapping = {
     'Szolgáltatás kezdete': 'szolg_kezdet',
 }
 
-allapot_map = {
-    'Megfelelő': '1',
-    'Bővítendő': '2',
-    'Felújítandó': '3'
-}
-
-TABLES = {
-    "park_azonosito": ("Adatok", ["park_nev"]),
-    "cimviselo_azonosito": ("Adatok", ["cimviselo_nev"]),
-
-    "cimviselo": ("Adatok", [
-        "cimviselo_foglalkoztatott",
-        "cimviselo_cim",
-        "osszetetel_allam",
-        "osszetetel_onkormanyzat",
-        "osszetetel_belfoldi_magan",
-        "osszetetel_kulfoldi",
-        "osszetetel_egyeb"
-    ]),
-
-    "alapadat": ("Adatok", [
-        "ip_cimszerzes",
-        "tp_cimszerzes",
-        "park_email",
-        "park_telepules",
-        "park_utca",
-        "park_iranyitoszam",
-        "park_varmegye",
-        "park_hrsz",
-        "park_regio",
-        "sajat_szolg_arany",
-        "kiszervezett_szolg_arany",
-        "park_honlap",
-        "alapadat_ev"
-    ]),
-
-    "management": ("Management", [
-        "management_nev",
-        "jognyilatkozat",
-        "operativ",
-        "management_beosztas",
-        "management_tel",
-        "management_email",
-        "management_kezdet",
-        "management_vege"
-    ]),
-
-    "EU_tamogatas": ("Elnyert EU-s támogatás", [
-        "op",
-        "tamogatas_ev",
-        "tamogatas_tartalom",
-        "intenzitas",
-        "EU_osszkoltseg"
-    ]),
-
-    "infrastruktura": ("Infrastruktúra", [
-        "infra_tipus",
-        "infra_nev",
-        "kapacitas",
-        "ellatott_ter",
-        "allapot",
-        "terv_fejlesztes_ev",
-        "terv_forras"
-    ]),
-
-    "szolgaltatas": ("Szolgáltatások", [
-        "szolg_tipus",
-        "szolg_nev",
-        "szolg_tartalom",
-        "szolgaltato_fajta",
-        "szolgaltato_nev",
-        "szolg_kezdet"
-    ]),
-
-    "helyrajzi_szam": ("Adatok", ["park_hrsz"]),
-
-    "kapcsolatok": ("Adatok", [
-        "kamara",
-        "klaszter",
-        "oktatas_kozep",
-        "munkaugy",
-        "civil",
-        "ip",
-        "onkormanyzat",
-        "fejlesztesi_ugynokseg",
-        "export_ugynokseg",
-        "kulfoldi_ip",
-        "nemzetkozi_projekt",
-        "oktatas_felso",
-        "kutatointezet",
-        "kf_tevekenyseg",
-        "uj_technologia",
-        "kapcsolatok_ev"
-    ]),
-
-    "terulet": ("Adatok", [
-        "osszterulet",
-        "hasznosithato_ter",
-        "beepitett_ter",
-        "hasznosithato_szabad_ter",
-        "hasznosithato_szabad_arany",
-        "parkolo",
-        "zoldterulet",
-        "berbeadott_ter_arany",
-        "eladott_ter_arany",
-        "terulet_ev"
-    ])
-}
-
-
-# listák az adatellenőrzéshez
+# Listák az adatellenőrzéshez
 park_varmegye = ['Bács-Kiskun', 'Baranya', 'Békés', 'Borsod-Abaúj-Zemplén', 'Csongrád-Csanád', 'Fejér', 'Győr-Moson-Sopron', 'Hajdú-Bihar', 'Heves', 'Jász-Nagykun-Szolnok', 'Komárom-Esztergom', 'Nógrád', 'Pest', 'Somogy', 'Szabolcs-Szatmár-Bereg', 'Tolna', 'Vas', 'Veszprém', 'Zala', 'Budapest']
 park_regio = ['Közép-Magyarország', 'Közép-Dunántúl', 'Nyugat-Dunántúl', 'Dél-Dunántúl', 'Észak-Magyarország', 'Észak-Alföld', 'Dél-Alföld']
 szolgaltato_fajta = ['A park üzemeltetője', 'Betelepült vállalkozás', 'Egyéb']
 allapot = ['Megfelelő', 'Bővítendő', 'Felújítandó']
 
-# adatellenőrzéshez szükséges szabályok oszlopok szerint:
+# Adatellenőrzéshez szükséges szabályok oszlopok szerint:
 val_rules = {
     "text_255": ["Ipari Park neve", "Címviselő szervezet neve", "Címviselő szervezet címe", "Település", "Út/utca", "Felelős neve", "Beosztása", "Operatív program", "Infrastruktúra típusa", "Infrastruktúra neve", "Szolgáltatás típusa", "Szolgáltatás neve", "Szolgáltató szervezet neve"],
     "text_500": ["Szolgáltatás tartalma", "Projekt tartalom" ],
-    "date": ["Management kezdete", "Management vége"],
+    "date": ["Megbízatás kezdete (ha ismert)", "Megbízatás vége (ha ismert)"],
     "year_max": ["Ipari park cím elnyerésének éve", "Technológiai park cím elnyerésének éve", "Mely évre vonatkoznak az adatok?", "Felhasználás éve", "Szolgáltatás kezdete", "Odaítélés éve", "Mely évre vonatkoznak a kapcsolati adatok?", "Mely évre vonatkoznak a területi adatok?", "Mely évre vonatkoznak az általános adatok?"],
-    "year_min": ["Tervezett fejlesztés éve",],
-    "email": ["Email", "Felelős e-mail",],
+    "year_min": ["Tervezett fejlesztés éve"],
+    "email": ["Email", "Felelős e-mail"],
     "percentage": ["Állami", "Önkormányzati", "Belföldi magán", "Külföldi", "Egyéb", "Hasznosítható szabad terület aránya (%)", "Betelepített területeit bérbe adja (%)", "Betelepített területeit eladta (%)", "Maga nyújtja (%)", "Kiszervezi (%)", "Exportarány (%)", "Támogatási intenzitás"],
     "positive_integer": ["Címviselő szervezet foglalkoztatottak száma", "Irányítószám", "Vállalkozások száma", "Foglalkoztatottak létszáma (fő)", "KKV-k száma", "Nagyvállalatok száma", "Egyéb vállalkozások száma"],
     "positive_real": ["Összterület (ha)", "Hasznosítható terület (ha)", "Betelepített terület (ha)", "Hasznosítható szabad terület (ha)", "Parkolóhely területe (m2)", "Zöldterületek, parkok (m2)", "Vállalkozások területe (ha)", "Beruházási érték (millió Ft)", "Árbevétel (millió Ft)", "Saját forrás (millió Ft)", "Állami támogatás (millió Ft)", "Önkormányzati támogatás (millió Ft)", "EU támogatás (millió Ft)", "Bankhitel (millió Ft)", "Tagi kölcsön (millió Ft)", "Tőkeemelés (millió Ft)", "Egyéb (millió Ft)", "ÖSSZES forrás (millió Ft)", "Kapacitás", "Ellátott terület nagysága (ha)", "Tervezett forrás", "Összköltség (millió Ft)"],
@@ -235,93 +123,186 @@ val_rules = {
     "varmegye": ["Vármegye"],
     "regio": ["Régió"],
     "szolgaltato_fajta": ["Szolgáltató szervezet típusa"],
+    "allapot": ["Állapota (Megfelelő/ Bővítendő/ Felújítandó)"],
     "telephone": ["Telefon"],
 }
+# Segédfüggvények az adatellenőrzéshez
+def normalize_text(value):
+    if pd.isna(value):
+        return None
+    return str(value).strip()
 
-# beolvasás
+
+def is_valid_date_value(value):
+    if pd.isna(value):
+        return True
+    if isinstance(value, (pd.Timestamp, datetime.date, datetime.datetime)):
+        return True
+    if isinstance(value, (int, float)):
+        return False
+    return not pd.isna(pd.to_datetime(value, errors='coerce'))
+
+
+def year_value(value):
+    if pd.isna(value):
+        return None
+    if isinstance(value, (pd.Timestamp, datetime.date, datetime.datetime)):
+        return value.year
+    numeric = pd.to_numeric(value, errors='coerce')
+    if pd.isna(numeric):
+        return None
+    if float(numeric).is_integer():
+        return int(numeric)
+    return None
+
+# Beolvasás
 def read_excel(excel_file, SHEETS):
     try:   
-        return pd.read_excel(excel_file, sheet_name=sheets, engine='odf')
+        return pd.read_excel(excel_file, sheet_name=SHEETS, engine='odf', header=1)
     except Exception as e:
         print(f"Hiba történt az Excel fájl beolvasása során: {e}")
         return None 
 
-# adatellenőrzés
+# Adatellenőrzés
 def data_validation(all_data):
     errors = []
-
-    for idx, row in all_data.iterrows():
-        line = idx + 2
-
+    EPS = 1e-6 # kis érték a lebegőpontos összehasonlításhoz
+   
+    for sheet_name, df in all_data.items():
+         # Vectorized validations
         for col in val_rules["text_255"]:
-            if col in row and isinstance(row[col], str) and len(row[col]) > 255:
-                errors.append(f"{line}. sor: '{col}' Túl hosszú (max 255).")
+            if col in df.columns:
+                mask = df[col].astype(str).str.len() > 255
+                for idx in mask[mask].index:
+                    line = idx + 2
+                    errors.append(f"{sheet_name} - {line}. sor: '{col}' Túl hosszú (max 255).")
+
         for col in val_rules["text_500"]:
-            if col in row and isinstance(row[col], str) and len(row[col]) > 500:
-                errors.append(f"{line}. sor: '{col}' Túl hosszú (max 500).")
+            if col in df.columns:
+                mask = df[col].astype(str).str.len() > 500
+                for idx in mask[mask].index:
+                    line = idx + 2
+                    errors.append(f"{sheet_name} - {line}. sor: '{col}' Túl hosszú (max 500).")
+
         for col in val_rules["date"]:
-            if col in row and pd.notnull(row[col]) and not isinstance(row[col], pd.Timestamp):
-                errors.append(f"{line}. sor: '{col}' Érvénytelen dátum formátum.")
+            if col in df.columns:
+                mask = df[col].notna() & ~df[col].apply(is_valid_date_value)
+                for idx in mask[mask].index:
+                    line = idx + 2
+                    errors.append(f"{sheet_name} - {line}. sor: '{col}' Érvénytelen dátum formátum.")
+
         for col in val_rules["year_max"]:
-            if col in row and (not isinstance(row[col], (int, float)) or not (1980 <= row[col] <= pd.Timestamp.now().year)):
-                errors.append(f"{line}. sor: '{col}' Érvénytelen év (1980 - jelen).")
+            if col in df.columns:
+                current_year = pd.Timestamp.now().year
+                mask = df[col].notna() & df[col].apply(lambda x: year_value(x) is None or year_value(x) < 1980 or year_value(x) > current_year)
+                for idx in mask[mask].index:
+                    line = idx + 2
+                    errors.append(f"{sheet_name} - {line}. sor: '{col}' Érvénytelen év (1980 - jelen).")
+
         for col in val_rules["year_min"]:
-            if col in row and (not isinstance(row[col], (int, float)) or row[col] < pd.Timestamp.now().year):
-                errors.append(f"{line}. sor: '{col}' Érvénytelen év (min jelen).")
+            if col in df.columns:
+                current_year = pd.Timestamp.now().year
+                mask = df[col].notna() & df[col].apply(lambda x: year_value(x) is None or year_value(x) < current_year)
+                for idx in mask[mask].index:
+                    line = idx + 2
+                    errors.append(f"{sheet_name} - {line}. sor: '{col}' Érvénytelen év (min jelen).")
+
         for col in val_rules["email"]:
-            if col in row and isinstance(row[col], str) and not pd.Series(row[col]).str.contains(r'^[\w\.-]+@[\w\.-]+\.\w+$').any():
-                errors.append(f"{line}. sor: '{col}' Érvénytelen email cím.")
+            if col in df.columns:
+                mask = df[col].notna() & (df[col].astype(str).str.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', na=False) == False)
+                for idx in mask[mask].index:
+                    line = idx + 2
+                    errors.append(f"{sheet_name} - {line}. sor: '{col}' Érvénytelen email cím.")
+
         for col in val_rules["percentage"]:
-            if col in row and (not isinstance(row[col], (int, float)) or not (0 <= row[col] <= 100)):
-                errors.append(f"{line}. sor: '{col}' Érvénytelen százalék érték (0-100).")
+            if col in df.columns:
+                mask = df[col].notna() & ~df[col].apply(lambda x: isinstance(x, (int, float)) and 0 <= x <= 100)
+                for idx in mask[mask].index:
+                    line = idx + 2
+                    errors.append(f"{sheet_name} - {line}. sor: '{col}' Érvénytelen százalék érték (0-100).")
+
         for col in val_rules["positive_real"]:
-            if col in row and (not isinstance(row[col], (int, float)) or row[col] < 0):
-                errors.append(f"{line}. sor: '{col}' Érvénytelen pozitív valós érték (min 0).")
+            if col in df.columns:
+                mask = df[col].notna() & ~df[col].apply(lambda x: isinstance(x, (int, float)) and x >= 0)
+                for idx in mask[mask].index:
+                    line = idx + 2
+                    errors.append(f"{sheet_name} - {line}. sor: '{col}' Érvénytelen pozitív valós érték (min 0).")
+
         for col in val_rules["positive_integer"]:
-            if col in row and (not isinstance(row[col], (int, float)) or row[col] < 0 or not float(row[col]).is_integer()):
-                errors.append(f"{line}. sor: '{col}' Érvénytelen pozitív egész érték (min 0).")
+            if col in df.columns:
+                mask = df[col].notna() & ~df[col].apply(lambda x: isinstance(x, (int, float)) and x >= 0 and float(x).is_integer())
+                for idx in mask[mask].index:
+                    line = idx + 2
+                    errors.append(f"{sheet_name} - {line}. sor: '{col}' Érvénytelen pozitív egész érték (min 0).")
+
         for col in val_rules["boolean"]:
-            if col in row and str(row[col]).lower() not in ['igen', 'nem']:
-                errors.append(f"{line}. sor: '{col}' Érvénytelen érték (csak 'igen' vagy 'nem').")
-        for col in val_rules["varmegye"]:   
-            if col in row and isinstance(row[col], str) and row[col] not in park_varmegye:
-                errors.append(f"{line}. sor: '{col}' Érvénytelen vármegye.")
+            if col in df.columns:
+                mask = df[col].notna() & ~df[col].astype(str).str.lower().isin(['igen', 'nem'])
+                for idx in mask[mask].index:
+                    line = idx + 2
+                    errors.append(f"{sheet_name} - {line}. sor: '{col}' Érvénytelen érték (csak 'igen' vagy 'nem').")
+
+        for col in val_rules["varmegye"]:
+            if col in df.columns:
+                mask = df[col].notna() & df[col].astype(str).apply(lambda x: x not in park_varmegye)
+                for idx in mask[mask].index:
+                    line = idx + 2
+                    errors.append(f"{sheet_name} - {line}. sor: '{col}' Érvénytelen vármegye.")
+
         for col in val_rules["regio"]:
-            if col in row and isinstance(row[col], str) and row[col] not in park_regio:
-                errors.append(f"{line}. sor: '{col}' Érvénytelen régió.")
+            if col in df.columns:
+                mask = df[col].notna() & df[col].astype(str).apply(lambda x: x not in park_regio)
+                for idx in mask[mask].index:
+                    line = idx + 2
+                    errors.append(f"{sheet_name} - {line}. sor: '{col}' Érvénytelen régió.")
+
         for col in val_rules["szolgaltato_fajta"]:
-            if col in row and isinstance(row[col], str) and row[col] not in szolgaltato_fajta:
-                errors.append(f"{line}. sor: '{col}' Érvénytelen szolgáltató szervezet típusa.")
+            if col in df.columns:
+                mask = df[col].notna() & ~df[col].astype(str).str.strip().str.lower().isin([s.lower() for s in szolgaltato_fajta])
+                for idx in mask[mask].index:
+                    line = idx + 2
+                    errors.append(f"{sheet_name} - {line}. sor: '{col}' Érvénytelen szolgáltató szervezet típusa.")
+
         for col in val_rules["allapot"]:
-            if col in row and isinstance(row[col], str) and row[col] not in allapot:
-                errors.append(f"{line}. sor: '{col}' Érvénytelen állapot (Megfelelő, Bővítendő, Felújítandó).")
+            if col in df.columns:
+                mask = df[col].notna() & ~df[col].astype(str).str.strip().str.lower().isin([s.lower() for s in allapot])
+                for idx in mask[mask].index:
+                    line = idx + 2
+                    errors.append(f"{sheet_name} - {line}. sor: '{col}' Érvénytelen állapot (Megfelelő, Bővítendő, Felújítandó).")
+
         for col in val_rules["telephone"]:
-            if col in row and isinstance(row[col], str) and not pd.Series(row[col]).str.contains(r'^\+?[\d\s\-\(\)]+$').any():
-                errors.append(f"{line}. sor: '{col}' Érvénytelen telefonszám.")
-        
-        if row.get('Állami') is not None and row.get('Önkormányzati') is not None and row.get('Belföldi magán') is not None and row.get('Külföldi') is not None and row.get('Egyéb') is not None:
-            total_percentage = row['Állami'] + row['Önkormányzati'] + row['Belföldi magán'] + row['Külföldi'] + row['Egyéb']
-            if total_percentage != 100:
-                errors.append(f"{line}. sor: 'Állami', 'Önkormányzati', 'Belföldi magán', 'Külföldi' és 'Egyéb' összege nem lehet nagyobb, mint 100%.")
-        if row.get('Hasznosítható terület (ha)') is not None and row.get('Összterület (ha)') is not None and row['Hasznosítható terület (ha)'] > row['Összterület (ha)']:
-            errors.append(f"{line}. sor: 'Hasznosítható terület (ha)' nem lehet nagyobb, mint 'Összterület (ha)'.")
-        if row.get('Betelepített terület (ha)') is not None and row.get('Hasznosítható szabad terület (ha)') is not None and row.get('Hasznosítható terület (ha)') is not None:
-            if row['Betelepített terület (ha)'] + row['Hasznosítható szabad terület (ha)'] > row['Hasznosítható terület (ha)']:
-                errors.append(f"{line}. sor: 'Betelepített terület (ha)' és 'Hasznosítható szabad terület (ha)' összege nem lehet nagyobb, mint 'Hasznosítható terület (ha)'.")
-        if row.get('Betelepített területeit bérbe adja (%)') is not None and row.get('Betelepített területeit eladta (%)') is not None:
-            if row['Betelepített területeit bérbe adja (%)'] + row['Betelepített területeit eladta (%)'] > 100:
-                errors.append(f"{line}. sor: 'Betelepített területeit bérbe adja (%)' és 'Betelepített területeit eladta (%)' összege nem lehet nagyobb, mint 100%.")
-        if row.get('Összes forrás (millió Ft)') is not None and row.get('Saját forrás (millió Ft)') is not None and row.get('Állami támogatás (millió Ft)') is not None and row.get('Önkormányzati támogatás (millió Ft)') is not None and row.get('EU támogatás (millió Ft)') is not None and row.get('Bankhitel (millió Ft)') is not None and row.get('Tagi kölcsön (millió Ft)') is not None and row.get('Tőkeemelés (millió Ft)') is not None and row.get('Egyéb (millió Ft)') is not None:
-            total_sources = row['Saját forrás (millió Ft)'] + row['Állami támogatás (millió Ft)'] + row['Önkormányzati támogatás (millió Ft)'] + row['EU támogatás (millió Ft)'] + row['Bankhitel (millió Ft)'] + row['Tagi kölcsön (millió Ft)'] + row['Tőkeemelés (millió Ft)'] + row['Egyéb (millió Ft)']
-            if total_sources != row['Összes forrás (millió Ft)']:
-                errors.append(f"{line}. sor: 'Összes forrás (millió Ft)' értéke nem egyezik meg a források összegével.")
-        if row.get('Maga nyújtja (%)') is not None and row.get('Kiszervezi (%)') is not None:
-            if row['Maga nyújtja (%)'] + row['Kiszervezi (%)'] > 100:
-                errors.append(f"{line}. sor: 'Maga nyújtja (%)' és 'Kiszervezi (%)' összege nem lehet nagyobb, mint 100%.")
-        
+            if col in df.columns:
+                mask = df[col].notna() & (df[col].astype(str).str.match(r'^\+?[\d\s\-\(\)/]+$', na=False) == False)
+                for idx in mask[mask].index:
+                    line = idx + 2
+                    errors.append(f"{sheet_name} - {line}. sor: '{col}' Érvénytelen telefonszám.")
+
+            
+        # Komplex adatellenőrzés
+        for idx, row in df.iterrows():
+            line = idx + 2
+            if pd.notna(row.get('Állami')) and pd.notna(row.get('Önkormányzati')) and pd.notna(row.get('Belföldi magán')) and pd.notna(row.get('Külföldi')) and pd.notna(row.get('Egyéb')):
+                total_percentage = row['Állami'] + row['Önkormányzati'] + row['Belföldi magán'] + row['Külföldi'] + row['Egyéb']
+                if abs(total_percentage - 100) > EPS:
+                    errors.append(f"{sheet_name} - {line}. sor: 'Állami', 'Önkormányzati', 'Belföldi magán', 'Külföldi' és 'Egyéb' összege nem lehet nagyobb, mint 100%.")
+            if pd.notna(row.get('Hasznosítható terület (ha)')) and pd.notna(row.get('Összterület (ha)')) and row['Hasznosítható terület (ha)'] > row['Összterület (ha)']:
+                errors.append(f"{sheet_name} - {line}. sor: 'Hasznosítható terület (ha)' nem lehet nagyobb, mint 'Összterület (ha)'.")
+            if pd.notna(row.get('Betelepített terület (ha)')) and pd.notna(row.get('Hasznosítható szabad terület (ha)')) and pd.notna(row.get('Hasznosítható terület (ha)')):
+                if row['Betelepített terület (ha)'] + row['Hasznosítható szabad terület (ha)'] > row['Hasznosítható terület (ha)'] + EPS:
+                    errors.append(f"{sheet_name} - {line}. sor: 'Betelepített terület (ha)' és 'Hasznosítható szabad terület (ha)' összege nem lehet nagyobb, mint 'Hasznosítható terület (ha)'.")
+            if pd.notna(row.get('Betelepített területeit bérbe adja (%)')) and pd.notna(row.get('Betelepített területeit eladta (%)')):
+                if row['Betelepített területeit bérbe adja (%)'] + row['Betelepített területeit eladta (%)'] > 100 + EPS:
+                    errors.append(f"{sheet_name} - {line}. sor: 'Betelepített területeit bérbe adja (%)' és 'Betelepített területeit eladta (%)' összege nem lehet nagyobb, mint 100%.")
+            if pd.notna(row.get('Összes forrás (millió Ft)')) and pd.notna(row.get('Saját forrás (millió Ft)')) and pd.notna(row.get('Állami támogatás (millió Ft)')) and pd.notna(row.get('Önkormányzati támogatás (millió Ft)')) and pd.notna(row.get('EU támogatás (millió Ft)')) and pd.notna(row.get('Bankhitel (millió Ft)')) and pd.notna(row.get('Tagi kölcsön (millió Ft)')) and pd.notna(row.get('Tőkeemelés (millió Ft)')) and pd.notna(row.get('Egyéb (millió Ft)')):
+                total_sources = row['Saját forrás (millió Ft)'] + row['Állami támogatás (millió Ft)'] + row['Önkormányzati támogatás (millió Ft)'] + row['EU támogatás (millió Ft)'] + row['Bankhitel (millió Ft)'] + row['Tagi kölcsön (millió Ft)'] + row['Tőkeemelés (millió Ft)'] + row['Egyéb (millió Ft)']
+                if abs(total_sources - row['Összes forrás (millió Ft)']) > EPS:
+                    errors.append(f"{sheet_name} - {line}. sor: 'Összes forrás (millió Ft)' értéke nem egyezik meg a források összegével.")
+            if pd.notna(row.get('Maga nyújtja (%)')) and pd.notna(row.get('Kiszervezi (%)')):
+                if row['Maga nyújtja (%)'] + row['Kiszervezi (%)'] > 100 + EPS:
+                    errors.append(f"{sheet_name} - {line}. sor: 'Maga nyújtja (%)' és 'Kiszervezi (%)' összege nem lehet nagyobb, mint 100%.")
+
     return errors
 
-# egyezés keresés a park név és címviselő név oszlopokra, hogy kinyerjük az adatbázisban már szereplő parkok és címviselők azonosítóit    
 def match_park_ID(park_tocheck, db_park_azonosito, threshold=0.85):
     #if not park_tocheck or not isinstance(park_tocheck, str):
         #return None
@@ -341,55 +322,62 @@ def match_cimviselo_ID(cimviselo_tocheck, db_cimviselo, threshold=0.85):
         return cimviselo_id
     return None
 
-def transform_write_to_db(db, all_data, column_mapping, allapot_map):
+def transform_write_to_db(db, all_data, column_mapping):
+    # Transform
+    def rename_columns_case_insensitive(df, mapping):
+        df_columns_lower = {col.lower(): col for col in df.columns}
+        new_mapping = {}
+        for key, value in mapping.items():
+            lower_key = key.lower()
+            if lower_key in df_columns_lower:
+                new_mapping[df_columns_lower[lower_key]] = value
+        return df.rename(columns=new_mapping)
     
-    df_adatok = all_data['Adatok'].rename(columns=column_mapping)
-    df_management = all_data['Management'].rename(columns=column_mapping)
-    df_EU_tamogatas = all_data['Elnyert EU-s támogatás'].rename(columns=column_mapping)
-    df_infrastruktura = all_data['Infrastruktúra'].rename(columns=column_mapping)
-    df_szolgaltatasok = all_data['Szolgáltatások'].rename(columns=column_mapping)
+    df_adatok = rename_columns_case_insensitive(all_data['Adatok'], column_mapping)
+    df_management = rename_columns_case_insensitive(all_data['Management'], column_mapping)
+    df_EU_tamogatas = rename_columns_case_insensitive(all_data['Elnyert EU-s támogatás'], column_mapping)
+    df_infrastruktura = rename_columns_case_insensitive(all_data['Infrastruktúra'], column_mapping)
+    df_szolgaltatasok = rename_columns_case_insensitive(all_data['Szolgáltatások'], column_mapping)
     
-    df_infrastruktura['allapot'] = df_infrastruktura['allapot'].map(allapot_map)
 
-    table_park_azonosito_data = df_adatok[['park_nev']].copy(),
-    table_cimviselo_azonosito_data = df_adatok[['cimviselo_nev']].copy(),    
-    table_cimviselo_data = df_adatok[['cimviselo_foglalkoztatott', 'cimviselo_cim', 'osszetetel_allam', 'osszetetel_onkormanyzat', 'osszetetel_belfoldi_magan', 'osszetetel_kulfoldi', 'osszetetel_egyeb',]].copy(),
-    table_alapadat_data = df_adatok[['ip_cimszerzes', 'tp_cimszerzes', 'park_email', 'park_telepules', 'park_utca', 'park_iranyitoszam', 'park_varmegye', 'park_hrsz', 'park_regio', 'sajat_szolg_arany' , 'kiszervezett_szolg_arany', 'park_honlap', 'alapadat_ev']].copy(),
-    table_management_data = df_management[['management_nev', 'jognyilatkozat', 'operativ', 'management_beosztas', 'management_tel', 'management_email', 'management_kezdet', 'management_vege']].copy(),
-    table_EU_tamogatas_data = df_EU_tamogatas[['op', 'tamogatas_ev', 'tamogatas_tartalom', 'intenzitas', 'EU_osszkoltseg']].copy(),
-    table_vallalkozasok_data = df_adatok[['vallalkozasok_terulet', 'vallalkozasok_szama', 'vallalkozasok_foglalkoztatott', 'beruhazasi_ertek', 'arbevetel', 'exportarany', 'kkv_szam', 'nagyvall_szam', 'egyeb_vall_szam', 'vallalkozasok_ev']].copy(),
-    table_infra_fajta_data = df_infrastruktura[['infra_tipus','infra_nev']].copy(),
-    table_infrastruktura_data = df_infrastruktura[['infra_tipus','infra_nev','kapacitas','ellatott_ter','allapot','terv_fejlesztes_ev','terv_forras']].copy(),
-    table_infrastrukturafejlesztes_data = df_adatok[['felhasznalas_ev', 'sajat_forras', 'allami_forras', 'onkormanyzati_forras', 'EU_forras', 'bankhitel', 'tagi_kolcson', 'tokeemeles', 'egyeb_forras', 'osszes_forras']].copy(),
-    table_szolg_fajta_data = df_szolgaltatasok[['szolg_tipus','szolg_nev']].copy(),
-    table_szolgaltatasok_data = df_szolgaltatasok[['szolg_tipus','szolg_nev','szolg_tartalom','szolgaltato_fajta','szolgaltato_nev','szolg_kezdet']].copy(),
-    table_helyrajzi_szam_data = df_adatok['park_hrsz'].astype(str).str.split(',').explode().str.strip().to_frame(name='park_hrsz').copy(),
+    table_park_azonosito_data = df_adatok[['park_nev']].copy()
+    table_cimviselo_azonosito_data = df_adatok[['cimviselo_nev']].copy()    
+    table_cimviselo_data = df_adatok[['cimviselo_foglalkoztatott', 'cimviselo_cim', 'osszetetel_allam', 'osszetetel_onkormanyzat', 'osszetetel_belfoldi_magan', 'osszetetel_kulfoldi', 'osszetetel_egyeb',]].copy()
+    table_alapadat_data = df_adatok[['ip_cimszerzes', 'tp_cimszerzes', 'park_email', 'park_telepules', 'park_utca', 'park_iranyitoszam', 'park_varmegye', 'park_regio', 'sajat_szolg_arany' , 'kiszervezett_szolg_arany', 'park_honlap', 'alapadat_ev']].copy()
+    table_alapadat_data = table_alapadat_data.rename(columns={'alapadatok_ev': 'alapadat_ev'})
+    table_management_data = df_management[['management_nev', 'jognyilatkozat', 'operativ', 'management_beosztas', 'management_tel', 'management_email', 'management_kezdet', 'management_vege']].copy()
+    table_EU_tamogatas_data = df_EU_tamogatas[['op', 'tamogatas_ev', 'tamogatas_tartalom', 'intenzitas', 'EU_osszkoltseg']].copy()
+    table_vallalkozasok_data = df_adatok[['vallalkozasok_terulet', 'vallalkozasok_szama', 'vallalkozasok_foglalkoztatott', 'beruhazasi_ertek', 'arbevetel', 'exportarany', 'kkv_szam', 'nagyvall_szam', 'egyeb_vall_szam', 'vallalkozasok_ev']].copy()
+    table_infra_fajta_data = df_infrastruktura[['infra_tipus','infra_nev']].copy()
+    table_infrastruktura_data = df_infrastruktura[['infra_tipus','infra_nev','kapacitas','ellatott_ter','allapot','terv_fejlesztes_ev','terv_forras']].copy()
+    table_infrastrukturafejlesztes_data = df_adatok[['felhasznalas_ev', 'sajat_forras', 'allami_forras', 'onkormanyzati_forras', 'EU_forras', 'bankhitel', 'tagi_kolcson', 'tokeemeles', 'egyeb_forras', 'osszes_forras']].copy()
+    table_szolg_fajta_data = df_szolgaltatasok[['szolg_tipus','szolg_nev']].copy()
+    table_szolgaltatasok_data = df_szolgaltatasok[['szolg_tipus','szolg_nev','szolg_tartalom','szolgaltato_fajta','szolgaltato_nev','szolg_kezdet']].copy()
+    table_helyrajzi_szam_data = df_adatok['park_hrsz'].astype(str).str.split(',').explode().str.strip().to_frame(name='park_hrsz').copy()
     table_kapcsolatok_data = df_adatok[['kamara', 'klaszter', 'oktatas_kozep', 'munkaugy', 'civil', 'ip', 'onkormanyzat', 'fejlesztesi_ugynokseg', 'export_ugynokseg', 'kulfoldi_ip', 'nemzetkozi_projekt', 'oktatas_felso', 'kutatointezet', 'kf_tevekenyseg', 'uj_technologia', 'kapcsolatok_ev']].copy()
     table_terulet_data = df_adatok[['osszterulet', 'hasznosithato_ter', 'beepitett_ter', 'hasznosithato_szabad_ter', 'hasznosithato_szabad_arany', 'parkolo', 'zoldterulet', 'berbeadott_ter_arany', 'eladott_ter_arany', 'terulet_ev']].copy()
 
 
     conn = sqlite3.connect(db)
     cursor = conn.cursor()
-    db_park_azonosito = pd.read_sql_query("SELECT park_ID, park_nev FROM park_azonosito;", conn)
+    db_park_azonosito = pd.read_sql_query("SELECT park_ID, park_nev, aktiv FROM park_azonosito WHERE aktiv = 1;", conn)
     db_cimviselo_azonosito = pd.read_sql_query("SELECT cimviselo_ID, cimviselo_nev FROM cimviselo_azonosito;", conn)
 
-    
+    #Adatbázisba írás
     try:
         with conn:
             park_tocheck = table_park_azonosito_data['park_nev'].iloc[0]
-            park_id = match_park_ID(park_tocheck, db_park_azonosito, threshold=0.85)
+            park_id = match_park_ID(park_tocheck, db_park_azonosito, threshold=90)
             if park_id is not None:
                 print(f"'{park_tocheck}' hasonló park név találat: '{db_park_azonosito.loc[db_park_azonosito['park_ID'] == park_id, 'park_nev'].values[0]}' (park_ID: {park_id})")
             else:
-                #park_id = cursor.execute("SELECT IFNULL(MAX(park_ID), 0) + 1 FROM park_azonosito").fetchone()[0]
-                #table_park_azonosito_data['park_ID'] = park_id
                 table_park_azonosito_data.to_sql('park_azonosito', conn, if_exists='append', index=False)
                 park_id = cursor.execute("SELECT park_ID FROM park_azonosito WHERE park_nev = ?", (park_tocheck,)).fetchone()[0]
                 print(f"Új park név hozzáadva: '{park_tocheck}') (park_ID: {park_id})")
        
             
-            cimviselo_tocheck = table_cimviselo_data['cimviselo_nev'].iloc[0]
-            cimviselo_id = match_cimviselo_ID(cimviselo_tocheck, db_cimviselo_azonosito, threshold=0.85)
+            cimviselo_tocheck = table_cimviselo_azonosito_data['cimviselo_nev'].iloc[0]
+            cimviselo_id = match_cimviselo_ID(cimviselo_tocheck, db_cimviselo_azonosito, threshold=85)
             if cimviselo_id is not None:
                 print(f"'{cimviselo_tocheck}' hasonló címviselő név találat: '{db_cimviselo_azonosito.loc[db_cimviselo_azonosito['cimviselo_ID'] == cimviselo_id, 'cimviselo_nev'].values[0]}' (cimviselo_ID: {cimviselo_id})")
             else:                     
@@ -421,7 +409,7 @@ def transform_write_to_db(db, all_data, column_mapping, allapot_map):
 
 
 #az infra_fajta adatokat csak első alkalommal kell bevinni
-            table_infra_fajta_data.to_sql('infra_fajta', conn, if_exists='append', index=False)
+            #table_infra_fajta_data.to_sql('infra_fajta', conn, if_exists='append', index=False)
 
             infra_fajta_df = pd.read_sql_query("SELECT * FROM infra_fajta;", conn)  
 
@@ -432,7 +420,7 @@ def transform_write_to_db(db, all_data, column_mapping, allapot_map):
             clean_infra_data_df.to_sql('infrastruktura', conn, if_exists='append', index=False)
 
 #a szolg_fajta adatokat csak első alkalommal kell bevinni
-            table_szolg_fajta_data.to_sql('szolg_fajta', conn, if_exists='append', index=False)
+            #table_szolg_fajta_data.to_sql('szolg_fajta', conn, if_exists='append', index=False)
 
             szolg_fajta_df = pd.read_sql_query("SELECT * FROM szolg_fajta;", conn)
 
@@ -442,20 +430,33 @@ def transform_write_to_db(db, all_data, column_mapping, allapot_map):
             clean_szolg_data_df['park_ID'] = park_id
             clean_szolg_data_df.to_sql('szolgaltatas', conn, if_exists='append', index=False)   
 
-        print("Adatok sikeresen feltöltve az adatbázisba.")
-
     except Exception as e:
         print(f"Hiba történt az adatbázis művelet során: {e}")
 
     finally:
         conn.close()    
 
-# ezt majd run-ba belerakni
-all_data = read_excel(excel_file, sheets_to_read)
-validation_errors = data_validation(all_data)
-if not validation_errors:
-    transform_write_to_db(db, all_data, column_mapping, allapot_map)
-else:
-    print("Adatellenőrzési hibák:")
-    for error in validation_errors:
-        print(error)
+
+def main():
+    excel_file = '/home/peti/Dokumentumok/gdf/kerdoiv/test_data/kecskemeti_ip_2022.ods'
+    db = '/home/peti/Dokumentumok/gdf/adatbazis/IP'
+
+    all_data = read_excel(excel_file, sheets_to_read)
+    if all_data is None:
+        print("A beolvasás sikertelen, kilépés.")
+        return
+
+    validation_errors = data_validation(all_data)
+    if validation_errors:
+        print("Adatellenőrzési hibák:")
+        for error in validation_errors:
+            print(error)
+        print(f"Összes hiba: {len(validation_errors)}")
+        return
+
+    transform_write_to_db(db, all_data, column_mapping)
+    
+    print("Adatbetöltés kész.")
+
+if __name__ == "__main__":
+    main()
