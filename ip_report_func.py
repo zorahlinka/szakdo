@@ -131,9 +131,18 @@ def report_emails(df, cfg, agg_map=None):
     return {"lista": pd.DataFrame({"Email": emails}), "reszletes": details}
 
 def report_missing(df, cfg, agg_map=None):
-    work_df = apply_filters(df, years=[cfg["year"]], filter_col=cfg.get("filter_col"), filter_values=cfg.get("filter_values"))
-    missing = work_df[(work_df["arbevetel"].isna()) | (work_df["arbevetel"] == 0)].copy()
-    missing = missing[["park_nev", "park_email", "management_email"]].drop_duplicates().reset_index(drop=True)
+    year = cfg["year"]
+    
+    # Get all unique parks
+    all_parks = df[["park_nev", "park_email", "management_email"]].drop_duplicates()
+    
+    # Get parks that have data for this year
+    parks_with_year = apply_filters(df, years=[year], filter_col=cfg.get("filter_col"), filter_values=cfg.get("filter_values"))
+    parks_with_data = parks_with_year[["park_nev"]].drop_duplicates()
+    
+    # Return parks that DON'T have data for this year
+    missing = all_parks[~all_parks["park_nev"].isin(parks_with_data["park_nev"])].reset_index(drop=True)
+    
     return {"hianyzo": missing}
 
 def report_pivot(df, cfg, agg_map_all):
