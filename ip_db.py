@@ -102,6 +102,22 @@ column_mapping = {
     'Szolgáltatás kezdete': 'szolg_kezdet',
 }
 
+allowed_columns = {
+            'park_azonosito': ['park_nev'],
+            'cimviselo_azonosito': ['cimviselo_nev'],
+            'alapadat': ['ip_cimszerzes', 'tp_cimszerzes', 'park_email', 'park_telepules', 'park_utca', 'park_iranyitoszam', 'park_varmegye', 'park_regio', 'sajat_szolg_arany', 'kiszervezett_szolg_arany', 'park_honlap', 'alapadat_ev', 'park_ID', 'cimviselo_ID'],
+            'cimviselo': ['cimviselo_foglalkoztatott', 'cimviselo_cim', 'osszetetel_allam', 'osszetetel_onkormanyzat', 'osszetetel_belfoldi_magan', 'osszetetel_kulfoldi', 'osszetetel_egyeb', 'cimviselo_ID'],
+            'management': ['management_nev', 'jognyilatkozat', 'operativ', 'management_beosztas', 'management_tel', 'management_email', 'management_kezdet', 'management_vege', 'park_ID'],
+            'vallalkozasok': ['vallalkozasok_terulet', 'vallalkozasok_szama', 'vallalkozasok_foglalkoztatott', 'beruhazasi_ertek', 'arbevetel', 'exportarany', 'kkv_szam', 'nagyvall_szam', 'egyeb_vall_szam', 'vallalkozasok_ev', 'park_ID'],
+            'infrastrukturafejlesztes': ['felhasznalas_ev', 'sajat_forras', 'allami_forras', 'onkormanyzati_forras', 'EU_forras', 'bankhitel', 'tagi_kolcson', 'tokeemeles', 'egyeb_forras', 'osszes_forras', 'park_ID'],
+            'EU_tamogatas': ['op', 'tamogatas_ev', 'tamogatas_tartalom', 'intenzitas', 'EU_osszkoltseg', 'park_ID'],
+            'helyrajzi_szam': ['park_hrsz', 'park_ID'],
+            'kapcsolatok': ['kamara', 'klaszter', 'oktatas_kozep', 'munkaugy', 'civil', 'ip', 'onkormanyzat', 'fejlesztesi_ugynokseg', 'export_ugynokseg', 'kulfoldi_ip', 'nemzetkozi_projekt', 'oktatas_felso', 'kutatointezet', 'kf_tevekenyseg', 'uj_technologia', 'kapcsolatok_ev', 'park_ID'],
+            'terulet': ['osszterulet', 'hasznosithato_ter', 'beepitett_ter', 'hasznosithato_szabad_ter', 'hasznosithato_szabad_arany', 'parkolo', 'zoldterulet', 'berbeadott_ter_arany', 'eladott_ter_arany', 'terulet_ev', 'park_ID'],
+            'infrastruktura': ['infra_ID', 'kapacitas', 'ellatott_ter', 'allapot', 'terv_fejlesztes_ev', 'terv_forras', 'park_ID'],
+            'szolgaltatas': ['szolg_ID', 'szolg_tartalom', 'szolgaltato_fajta', 'szolgaltato_nev', 'szolg_kezdet', 'park_ID'],
+        }
+
 # Listák az adatellenőrzéshez
 park_varmegye = ['Bács-Kiskun', 'Baranya', 'Békés', 'Borsod-Abaúj-Zemplén', 'Csongrád-Csanád', 'Fejér', 'Győr-Moson-Sopron', 'Hajdú-Bihar', 'Heves', 'Jász-Nagykun-Szolnok', 'Komárom-Esztergom', 'Nógrád', 'Pest', 'Somogy', 'Szabolcs-Szatmár-Bereg', 'Tolna', 'Vas', 'Veszprém', 'Zala', 'Budapest']
 park_regio = ['Közép-Magyarország', 'Közép-Dunántúl', 'Nyugat-Dunántúl', 'Dél-Dunántúl', 'Észak-Magyarország', 'Észak-Alföld', 'Dél-Alföld']
@@ -303,6 +319,7 @@ def data_validation(all_data):
 
     return errors
 
+# Fuzzy matching segédfüggvények (park_ID és cimviselo_ID hozzárendeléséhez)
 def match_park_ID(park_tocheck, db_park_azonosito, threshold=0.85):
     #if not park_tocheck or not isinstance(park_tocheck, str):
         #return None
@@ -322,22 +339,41 @@ def match_cimviselo_ID(cimviselo_tocheck, db_cimviselo, threshold=0.85):
         return cimviselo_id
     return None
 
+# Adatbázisba írás
+def insert_df(transaction_conn, table_name, dataframe):
+    if dataframe.empty:
+        return
+
+    if table_name not in allowed_columns:
+        raise ValueError(f"Invalid table name for insert: {table_name}")
+
+    columns = list(dataframe.columns)
+    for column in columns:
+        if column not in allowed_columns[table_name]:
+            raise ValueError(f"Invalid column name for table {table_name}: {column}")
+        if not column.isidentifier():
+            raise ValueError(f"Invalid SQL identifier: {column}")
+
+    if not table_name.isidentifier():
+        raise ValueError(f"Invalid SQL identifier: {table_name}")
+
+    placeholders = ','.join(['?'] * len(columns))
+    quoted_columns = ','.join(f'"{column}"' for column in columns)
+    sql = f'INSERT INTO "{table_name}" ({quoted_columns}) VALUES ({placeholders})'
+
+    for row in dataframe.itertuples(index=False, name=None):
+        values = tuple(None if pd.isna(value) else value for value in row)
+        transaction_conn.execute(sql, values)
+
+# Fő függvény az adatok transzformálásához és adatbázisba írásához
 def transform_write_to_db(db, all_data, column_mapping):
     # Transform
-    def rename_columns_case_insensitive(df, mapping):
-        df_columns_lower = {col.lower(): col for col in df.columns}
-        new_mapping = {}
-        for key, value in mapping.items():
-            lower_key = key.lower()
-            if lower_key in df_columns_lower:
-                new_mapping[df_columns_lower[lower_key]] = value
-        return df.rename(columns=new_mapping)
-    
-    df_adatok = rename_columns_case_insensitive(all_data['Adatok'], column_mapping)
-    df_management = rename_columns_case_insensitive(all_data['Management'], column_mapping)
-    df_EU_tamogatas = rename_columns_case_insensitive(all_data['Elnyert EU-s támogatás'], column_mapping)
-    df_infrastruktura = rename_columns_case_insensitive(all_data['Infrastruktúra'], column_mapping)
-    df_szolgaltatasok = rename_columns_case_insensitive(all_data['Szolgáltatások'], column_mapping)
+        
+    df_adatok = all_data['Adatok'].rename(columns=column_mapping)
+    df_management = all_data['Management'].rename(columns=column_mapping)
+    df_EU_tamogatas = all_data['Elnyert EU-s támogatás'].rename(columns=column_mapping)
+    df_infrastruktura = all_data['Infrastruktúra'].rename(columns=column_mapping)
+    df_szolgaltatasok = all_data['Szolgáltatások'].rename(columns=column_mapping)
     
 
     table_park_azonosito_data = df_adatok[['park_nev']].copy()
@@ -357,41 +393,39 @@ def transform_write_to_db(db, all_data, column_mapping):
     table_kapcsolatok_data = df_adatok[['kamara', 'klaszter', 'oktatas_kozep', 'munkaugy', 'civil', 'ip', 'onkormanyzat', 'fejlesztesi_ugynokseg', 'export_ugynokseg', 'kulfoldi_ip', 'nemzetkozi_projekt', 'oktatas_felso', 'kutatointezet', 'kf_tevekenyseg', 'uj_technologia', 'kapcsolatok_ev']].copy()
     table_terulet_data = df_adatok[['osszterulet', 'hasznosithato_ter', 'beepitett_ter', 'hasznosithato_szabad_ter', 'hasznosithato_szabad_arany', 'parkolo', 'zoldterulet', 'berbeadott_ter_arany', 'eladott_ter_arany', 'terulet_ev']].copy()
 
-
-    conn = sqlite3.connect(db)
-    cursor = conn.cursor()
-    db_park_azonosito = pd.read_sql_query("SELECT park_ID, park_nev, aktiv FROM park_azonosito WHERE aktiv = 1;", conn)
-    db_cimviselo_azonosito = pd.read_sql_query("SELECT cimviselo_ID, cimviselo_nev FROM cimviselo_azonosito;", conn)
-
-    #Adatbázisba írás
+    #Write to DB
     try:
-        with conn:
+        with sqlite3.connect(db) as conn:
+            cursor = conn.cursor()
+            db_park_azonosito = pd.read_sql_query("SELECT park_ID, park_nev, aktiv FROM park_azonosito WHERE aktiv = 1;", conn)
+            db_cimviselo_azonosito = pd.read_sql_query("SELECT cimviselo_ID, cimviselo_nev FROM cimviselo_azonosito;", conn)
+
             park_tocheck = table_park_azonosito_data['park_nev'].iloc[0]
             park_id = match_park_ID(park_tocheck, db_park_azonosito, threshold=90)
             if park_id is not None:
                 print(f"'{park_tocheck}' hasonló park név találat: '{db_park_azonosito.loc[db_park_azonosito['park_ID'] == park_id, 'park_nev'].values[0]}' (park_ID: {park_id})")
             else:
-                table_park_azonosito_data.to_sql('park_azonosito', conn, if_exists='append', index=False)
+                insert_df(conn, 'park_azonosito', table_park_azonosito_data)
                 park_id = cursor.execute("SELECT park_ID FROM park_azonosito WHERE park_nev = ?", (park_tocheck,)).fetchone()[0]
                 print(f"Új park név hozzáadva: '{park_tocheck}') (park_ID: {park_id})")
-       
-            
+               
+                    
             cimviselo_tocheck = table_cimviselo_azonosito_data['cimviselo_nev'].iloc[0]
             cimviselo_id = match_cimviselo_ID(cimviselo_tocheck, db_cimviselo_azonosito, threshold=85)
             if cimviselo_id is not None:
                 print(f"'{cimviselo_tocheck}' hasonló címviselő név találat: '{db_cimviselo_azonosito.loc[db_cimviselo_azonosito['cimviselo_ID'] == cimviselo_id, 'cimviselo_nev'].values[0]}' (cimviselo_ID: {cimviselo_id})")
             else:                     
-                table_cimviselo_azonosito_data.to_sql('cimviselo_azonosito', conn, if_exists='append', index=False)
+                insert_df(conn, 'cimviselo_azonosito', table_cimviselo_azonosito_data)
                 cimviselo_id = cursor.execute("SELECT cimviselo_ID FROM cimviselo_azonosito WHERE cimviselo_nev = ?", (cimviselo_tocheck,)).fetchone()[0]
                 print(f"Új címviselő név hozzáadva: '{cimviselo_tocheck}') (cimviselo_ID: {cimviselo_id})")
-                
+                        
 
             table_alapadat_data['park_ID'] = park_id
             table_alapadat_data['cimviselo_ID'] = cimviselo_id
-            table_alapadat_data.to_sql('alapadat', conn, if_exists='append', index=False)   
+            insert_df(conn, 'alapadat', table_alapadat_data)
 
             table_cimviselo_data['cimviselo_ID'] = cimviselo_id
-            table_cimviselo_data.to_sql('cimviselo', conn, if_exists='append', index=False)
+            insert_df(conn, 'cimviselo', table_cimviselo_data)
 
             tables = {
                 'management': table_management_data,
@@ -405,10 +439,10 @@ def transform_write_to_db(db, all_data, column_mapping):
 
             for name, df in tables.items():
                 df['park_ID'] = park_id
-                df.to_sql(name, conn, if_exists='append', index=False)
+                insert_df(conn, name, df)
 
 
-#az infra_fajta adatokat csak első alkalommal kell bevinni
+    #az infra_fajta adatokat csak első alkalommal kell bevinni
             #table_infra_fajta_data.to_sql('infra_fajta', conn, if_exists='append', index=False)
 
             infra_fajta_df = pd.read_sql_query("SELECT * FROM infra_fajta;", conn)  
@@ -417,9 +451,9 @@ def transform_write_to_db(db, all_data, column_mapping):
             final_merged_infra_df = merged_infra_df[['infra_ID','kapacitas','ellatott_ter','allapot','terv_fejlesztes_ev','terv_forras',]]
             clean_infra_data_df = final_merged_infra_df.dropna(subset=['ellatott_ter', 'allapot']).copy()
             clean_infra_data_df['park_ID'] = park_id
-            clean_infra_data_df.to_sql('infrastruktura', conn, if_exists='append', index=False)
+            insert_df(conn, 'infrastruktura', clean_infra_data_df)
 
-#a szolg_fajta adatokat csak első alkalommal kell bevinni
+    #a szolg_fajta adatokat csak első alkalommal kell bevinni
             #table_szolg_fajta_data.to_sql('szolg_fajta', conn, if_exists='append', index=False)
 
             szolg_fajta_df = pd.read_sql_query("SELECT * FROM szolg_fajta;", conn)
@@ -428,17 +462,16 @@ def transform_write_to_db(db, all_data, column_mapping):
             final_merged_szolg_df = merged_szolg_df[['szolg_ID','szolg_tartalom','szolgaltato_fajta','szolgaltato_nev','szolg_kezdet',]]
             clean_szolg_data_df = final_merged_szolg_df.dropna(subset=['szolgaltato_fajta']).copy()
             clean_szolg_data_df['park_ID'] = park_id
-            clean_szolg_data_df.to_sql('szolgaltatas', conn, if_exists='append', index=False)   
-
+            insert_df(conn, 'szolgaltatas', clean_szolg_data_df)   
     except Exception as e:
         print(f"Hiba történt az adatbázis művelet során: {e}")
-
+        raise
     finally:
-        conn.close()    
+        conn.close()
 
 
 def main():
-    excel_file = '/home/peti/Dokumentumok/gdf/kerdoiv/test_data/kecskemeti_ip_2022.ods'
+    excel_file = '/home/peti/Dokumentumok/gdf/kerdoiv/test_data/zalaegerszegi_ip_2023.ods'
     db = '/home/peti/Dokumentumok/gdf/adatbazis/IP'
 
     all_data = read_excel(excel_file, sheets_to_read)
@@ -455,8 +488,7 @@ def main():
         return
 
     transform_write_to_db(db, all_data, column_mapping)
-    
-    print("Adatbetöltés kész.")
+    print("Adatbetöltés vége.")
 
 if __name__ == "__main__":
     main()

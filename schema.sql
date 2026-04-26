@@ -16,7 +16,7 @@ CREATE TABLE "alapadat" (
 	"park_email"	TEXT,
 	"park_telepules"	TEXT,
 	"park_utca"	TEXT,
-	"park_iranyitoszam"	INTEGER,
+	"park_iranyitoszam"	TEXT,
 	"park_varmegye"	TEXT,
 	"park_regio"	TEXT,
 	"sajat_szolg_arany"	REAL,
@@ -26,12 +26,11 @@ CREATE TABLE "alapadat" (
 	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
 	"alapadat_ev"	INTEGER,
 	PRIMARY KEY("park_ID","datum"),
-	FOREIGN KEY("cimviselo_ID") REFERENCES "cimviselo"("cimviselo_ID"),
+	FOREIGN KEY("cimviselo_ID") REFERENCES "cimviselo_azonosito"("cimviselo_ID"),
 	FOREIGN KEY("park_ID") REFERENCES "park_azonosito"("park_ID")
 );
 CREATE TABLE "cimviselo" (
 	"cimviselo_ID"	INTEGER,
-	"cimviselo_nev"	TEXT,
 	"cimviselo_foglalkoztatott"	INTEGER,
 	"osszetetel_allam"	REAL,
 	"osszetetel_onkormanyzat"	REAL,
@@ -40,7 +39,7 @@ CREATE TABLE "cimviselo" (
 	"cimviselo_cim"	TEXT,
 	"osszetetel_egyeb"	REAL,
 	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
-	PRIMARY KEY("cimviselo_ID","datum")
+	PRIMARY KEY("cimviselo_ID","datum"),
 	FOREIGN KEY("cimviselo_ID") REFERENCES "cimviselo_azonosito"("cimviselo_ID"),
 );
 CREATE TABLE "helyrajzi_szam" (
@@ -155,7 +154,7 @@ CREATE TABLE "terulet" (
 	"zoldterulet"	REAL,
 	"berbeadott_ter_arany"	REAL,
 	"eladott_ter_arany"	REAL,
-	"datum"	TEXT DEFAULT CURRENt_TIMESTAMP,
+	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
 	"terulet_ev"	INTEGER,
 	PRIMARY KEY("datum","park_ID"),
 	FOREIGN KEY("park_ID") REFERENCES "park_azonosito"("park_ID")
