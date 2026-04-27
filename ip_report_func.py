@@ -44,17 +44,7 @@ def safe_div(numerator, denominator):
 def round_by_structure(df):
     df = df.copy()
     for col in df.columns:
-        col_str = str(col)
-
-        if "_Avg_" in col_str:
-            df[col] = df[col].round(2)
-        elif "_Pct_" in col_str:
-            df[col] = df[col].round(2)
-        elif "_Diff_" in col_str:
-            df[col] = df[col].round(0)
-        else:
-            df[col] = df[col].round(0)
-        
+        df[col] = df[col].round(2)
     return df
 
 def apply_filters(df, years=None, filter_col=None, filter_values=None):
@@ -192,70 +182,38 @@ def report_pivot(df, cfg, agg_map_all):
                     )
 
     return round_by_structure(pivot)
-    
- # Összesített riport, ahol évenkénti összesítést adunk, majd ezek alapján számoljuk a különbségeket és százalékos változásokat.      
+
 def report_totals(df, cfg, agg_map_all):
     agg_dict = agg_map_all[cfg["agg"]]
     work_df = apply_filters(df, years=cfg.get("years"))
     
     
     years = sorted(cfg.get("years", work_df['alapadat_ev'].unique()))
-    
-    # Calculate aggregates: all parks + per park
+
+    counts = work_df.groupby('alapadat_ev')['park_ID'].nunique()
+
     all_parks_agg = work_df.groupby('alapadat_ev').agg(agg_dict)
-    per_park_agg = work_df.groupby(['alapadat_ev', 'park_nev']).agg(agg_dict)
     
     # Convert all values to numeric
-    all_parks_agg = all_parks_agg.apply(pd.to_numeric, errors='coerce')
-    per_park_agg = per_park_agg.apply(pd.to_numeric, errors='coerce')
-    
-    # Build result dictionary
-    result_data = {}
-    
-    for metric in agg_dict:
-        for year in years:
-            # All Parks aggregate
-            try:
-                all_parks_val = float(all_parks_agg.loc[year, metric]) if pd.notna(all_parks_agg.loc[year, metric]) else 0.0
-                result_data[(metric, year, 'All_Parks')] = all_parks_val
-            except (KeyError, ValueError, TypeError):
-                result_data[(metric, year, 'All_Parks')] = 0.0
-            
-            # Per-park values
-            parks = sorted(work_df[work_df['alapadat_ev'] == year]['park_nev'].unique())
-            for park in parks:
-                try:
-                    park_val = float(per_park_agg.loc[(year, park), metric]) if pd.notna(per_park_agg.loc[(year, park), metric]) else 0.0
-                    result_data[(metric, year, park)] = park_val
-                except (KeyError, ValueError, TypeError):
-                    result_data[(metric, year, park)] = 0.0
-        
-        # Calculate differences and percentages (All Parks only)
-        if len(years) >= 2:
-            y1, y2 = years[0], years[-1]
-            try:
-                all_parks_first = float(all_parks_agg.loc[y1, metric]) if pd.notna(all_parks_agg.loc[y1, metric]) else 0.0
-                all_parks_last = float(all_parks_agg.loc[y2, metric]) if pd.notna(all_parks_agg.loc[y2, metric]) else 0.0
-                
-                diff = all_parks_last - all_parks_first
-                pct = safe_div(pd.Series([diff]), pd.Series([all_parks_first])).iloc[0] if all_parks_first != 0 else 0.0
-                
-                result_data[(metric, f"{y1}_to_{y2}", 'Diff')] = diff
-                result_data[(metric, f"{y1}_to_{y2}", 'Pct')] = pct
-            except (KeyError, ValueError, TypeError):
-                result_data[(metric, f"{y1}_to_{y2}", 'Diff')] = 0.0
-                result_data[(metric, f"{y1}_to_{y2}", 'Pct')] = 0.0
-    
-    # Create DataFrame with MultiIndex columns
-    final_df = pd.DataFrame([result_data])
-    final_df.columns = pd.MultiIndex.from_tuples(
-        final_df.columns, 
-        names=['Metric', 'Year', 'Park/Type']
-    )
-    
-    return round_by_structure(final_df)
+    all_parks_agg = all_parks_agg.apply(pd.to_numeric, errors='coerce').transpose()
 
-  
+    out = all_parks_agg
+
+    for y in all_parks_agg.columns:
+        cnt = counts[y] if y in counts else 0
+        series = all_parks_agg[y]
+        avg = []
+        for total in series:
+            try:
+                total_val = float(total) if pd.notna(total) else 0.0
+                avg_val = total_val / cnt if cnt != 0 else 0.0
+                avg.append(avg_val)
+            except (ValueError, TypeError):
+                avg.append(0.0)
+        out[f"{int(y)} Átlag"] = avg
+
+    out["Növekedés"] = out[f"{int(years[-1])} Átlag"] - out[f"{int(years[0])} Átlag"]
+    return round_by_structure(out)
            
 
 # 5. MAIN
