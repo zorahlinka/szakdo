@@ -92,7 +92,7 @@ def export_to_ods(result, name):
 
         for sheet_name, df in sheets.items():
             safe_name = str(sheet_name)[:31]
-            df.to_excel(writer, sheet_name=safe_name, index=False)
+            df.to_excel(writer, sheet_name=safe_name, index=True)
 
     print(f"Mentve: {file_name}")
 
@@ -132,18 +132,24 @@ def report_emails(df, cfg, agg_map=None):
 
 def report_missing(df, cfg, agg_map=None):
     year = cfg["year"]
-    
+
     # Get all unique parks
     all_parks = df[["park_nev", "park_email", "management_email"]].drop_duplicates()
-    
+
     # Get parks that have data for this year
     parks_with_year = apply_filters(df, years=[year], filter_col=cfg.get("filter_col"), filter_values=cfg.get("filter_values"))
     parks_with_data = parks_with_year[["park_nev"]].drop_duplicates()
-    
-    # Return parks that DON'T have data for this year
+
+    # Parks that DON'T have data for this year
     missing = all_parks[~all_parks["park_nev"].isin(parks_with_data["park_nev"])].reset_index(drop=True)
-    
-    return {"hianyzo": missing}
+
+    # Group by park to consolidate emails
+    consolidated = missing.groupby('park_nev').agg({
+        'park_email': 'first',  # Take first park email (should be the same for all rows of same park)
+        'management_email': lambda x: '; '.join(sorted(x.dropna().unique()))  # Combine all management emails
+    }).reset_index()
+
+    return {"hianyzo": consolidated}
 
 def report_pivot(df, cfg, agg_map_all):
     agg_dict = agg_map_all[cfg["agg"]]
@@ -192,55 +198,65 @@ def report_totals(df, cfg, agg_map_all):
     agg_dict = agg_map_all[cfg["agg"]]
     work_df = apply_filters(df, years=cfg.get("years"))
     
-    totals = work_df.groupby('alapadat_ev').agg(agg_dict)
-    counts = work_df.groupby('alapadat_ev')['park_ID'].nunique()
     
-    years = sorted(int(y) for y in totals.index)
+    years = sorted(cfg.get("years", work_df['alapadat_ev'].unique()))
     
-    # Sum és Avg kiszámítása
-    result = {}
-    for y in years:
-        for metric in agg_dict:
-            total_val = totals.loc[y, metric]
-            count_val = counts[y]
-            
-            # Ensure both values are numeric
+    # Calculate aggregates: all parks + per park
+    all_parks_agg = work_df.groupby('alapadat_ev').agg(agg_dict)
+    per_park_agg = work_df.groupby(['alapadat_ev', 'park_nev']).agg(agg_dict)
+    
+    # Convert all values to numeric
+    all_parks_agg = all_parks_agg.apply(pd.to_numeric, errors='coerce')
+    per_park_agg = per_park_agg.apply(pd.to_numeric, errors='coerce')
+    
+    # Build result dictionary
+    result_data = {}
+    
+    for metric in agg_dict:
+        for year in years:
+            # All Parks aggregate
             try:
-                total_val = float(total_val) if pd.notna(total_val) else 0.0
-                count_val = float(count_val) if pd.notna(count_val) else 1.0  # Avoid division by zero
+                all_parks_val = float(all_parks_agg.loc[year, metric]) if pd.notna(all_parks_agg.loc[year, metric]) else 0.0
+                result_data[(metric, year, 'All_Parks')] = all_parks_val
+            except (KeyError, ValueError, TypeError):
+                result_data[(metric, year, 'All_Parks')] = 0.0
+            
+            # Per-park values
+            parks = sorted(work_df[work_df['alapadat_ev'] == year]['park_nev'].unique())
+            for park in parks:
+                try:
+                    park_val = float(per_park_agg.loc[(year, park), metric]) if pd.notna(per_park_agg.loc[(year, park), metric]) else 0.0
+                    result_data[(metric, year, park)] = park_val
+                except (KeyError, ValueError, TypeError):
+                    result_data[(metric, year, park)] = 0.0
+        
+        # Calculate differences and percentages (All Parks only)
+        if len(years) >= 2:
+            y1, y2 = years[0], years[-1]
+            try:
+                all_parks_first = float(all_parks_agg.loc[y1, metric]) if pd.notna(all_parks_agg.loc[y1, metric]) else 0.0
+                all_parks_last = float(all_parks_agg.loc[y2, metric]) if pd.notna(all_parks_agg.loc[y2, metric]) else 0.0
                 
-                result[f"{metric}_Sum_{y}"] = total_val
-                result[f"{metric}_Avg_{y}"] = total_val / count_val if count_val != 0 else 0.0
-            except (ValueError, TypeError):
-                # If conversion fails, set to 0
-                result[f"{metric}_Sum_{y}"] = 0.0
-                result[f"{metric}_Avg_{y}"] = 0.0
-        
-    final_df = pd.DataFrame([result])  # Wrap in list to create single-row DataFrame
+                diff = all_parks_last - all_parks_first
+                pct = safe_div(pd.Series([diff]), pd.Series([all_parks_first])).iloc[0] if all_parks_first != 0 else 0.0
+                
+                result_data[(metric, f"{y1}_to_{y2}", 'Diff')] = diff
+                result_data[(metric, f"{y1}_to_{y2}", 'Pct')] = pct
+            except (KeyError, ValueError, TypeError):
+                result_data[(metric, f"{y1}_to_{y2}", 'Diff')] = 0.0
+                result_data[(metric, f"{y1}_to_{y2}", 'Pct')] = 0.0
     
-    # Évek közötti különbségek (Avg alapján, azaz per park)
-    for i in range(1, len(years)):
-        y1, y2 = years[i-1], years[i]
-        for metric in agg_dict:
-            c1 = f"{metric}_Avg_{y1}"
-            c2 = f"{metric}_Avg_{y2}"
-            final_df[f"{metric}_Diff_{y1}_{y2}"] = final_df[c2] - final_df[c1]
-        
-    # TOTAL különbség (első és utolsó év között, Avg alapján)
-    if len(years) >= 2:
-        y1, y2 = years[0], years[-1]
-        for metric in agg_dict:
-            # Calculate total difference directly
-            total_diff = final_df[f"{metric}_Avg_{y2}"].iloc[0] - final_df[f"{metric}_Avg_{y1}"].iloc[0]
-            base_val = final_df[f"{metric}_Avg_{y1}"].iloc[0]
-
-            final_df[f"{metric}_Pct_{y1}_{y2}"] = safe_div(
-                pd.Series([total_diff]),
-                pd.Series([base_val])
-            ).iloc[0]
-
+    # Create DataFrame with MultiIndex columns
+    final_df = pd.DataFrame([result_data])
+    final_df.columns = pd.MultiIndex.from_tuples(
+        final_df.columns, 
+        names=['Metric', 'Year', 'Park/Type']
+    )
+    
     return round_by_structure(final_df)
-        
+
+  
+           
 
 # 5. MAIN
 
