@@ -144,47 +144,72 @@ def report_missing(df, cfg, agg_map=None):
 def report_pivot(df, cfg, agg_map_all):
     agg_dict = agg_map_all[cfg["agg"]]
     df = apply_filters(df, cfg.get("years"), cfg.get("group_col"), cfg.get("filter_values"))
-    metrics_to_use = [cfg.get("metric")] if cfg.get("metric") else list(agg_dict.keys())
+    
+    df['alapadat_ev'] = df['alapadat_ev'].astype(int)
+
+    # Handle both single metric and multiple metrics
+    if cfg.get("metric"):
+        metrics_to_use = [cfg.get("metric")]
+    elif cfg.get("metrics"):
+        metrics_to_use = cfg.get("metrics")
+        if not isinstance(metrics_to_use, list):
+            metrics_to_use = [metrics_to_use]
+    else:
+        metrics_to_use = list(agg_dict.keys())
+    
+    
     agg_dict_filtered = {m: agg_dict[m] for m in metrics_to_use if m in agg_dict}
     
     pivot = df.pivot_table(
         values=metrics_to_use,
         index=cfg["group_col"],
         columns="alapadat_ev",
-        aggfunc=agg_dict_filtered,
+        aggfunc={m: agg_dict_filtered[m] for m in metrics_to_use},
         fill_value=0
     )
     
-    pivot.columns = [f"{m}_{y}" for m, y in pivot.columns]
+    pivot.columns = [f"{metric}_{year}" for metric, year in pivot.columns]
 
     # éveket a pivotból veszi
-    years = sorted({str(col).split("_")[-1] for col in pivot.columns})
-    print(f"Years: {years}")
-    #years = sorted(cfg.get("years", pivot['alapadat_ev'].unique()))
-    # Add TOTAL columns
+    years = sorted({int(str(col).split("_")[-1]) for col in pivot.columns})
+    park_counts = df.groupby(cfg["group_col"])['park_ID'].nunique()
+        
+    for metric in agg_dict_filtered:
+            for year in years:
+                col_name = f"{metric}_{year}"
+                if col_name not in pivot.columns:
+                    continue
+                if col_name in pivot.columns:
+                    pivot[f"{metric}_{year}_Per_Park"] = pivot[col_name] / park_counts
+    
+    # Változás számítása csak akkor, ha legalább 2 év van
     if len(years) >= 2:
         y1, y2 = years[0], years[-1]
-        for metric in agg_dict:
-            c1 = f"{metric}_{y1}"
-            c2 = f"{metric}_{y2}"
-            if c1 in pivot.columns and c2 in pivot.columns:
-                diff_col = f"{metric}_Diff_{y1}_{y2}"
-                if diff_col in pivot.columns:
-                    pivot[f"{metric}_Pct_{y1}_{y2}"] = safe_div(
-                        pivot[diff_col],
-                        pivot[c1]
-                    )
+        for metric in agg_dict_filtered:
     
-    pivot["Növekedés"] = pivot[f"{metric}_{int(years[-1])}"] - pivot[f"{metric}_{int(years[0])}"]
-    
+            per_park_y1 = f"{metric}_{y1}_Per_Park"
+            per_park_y2 = f"{metric}_{y2}_Per_Park"
+            pivot[f"{metric}_Változás_per_park"] = pivot[per_park_y2] - pivot[per_park_y1]
+            pivot[f"{metric}_Változás_%_per_park"] = pivot[f"{metric}_Változás_per_park"].values / pivot[per_park_y1].replace(0, np.nan).values * 100 
+            pivot[f"{metric}_Változás_%_per_park"] = pivot[f"{metric}_Változás_%_per_park"].fillna(0).round(2)
+            
+          
     return round_by_structure(pivot)
 
 def report_totals(df, cfg, agg_map_all):
     agg_dict = agg_map_all[cfg["agg"]]
     work_df = apply_filters(df, years=cfg.get("years"))
     
+    # Convert year column to int
+    work_df['alapadat_ev'] = work_df['alapadat_ev'].astype(int)
     
-    years = sorted(cfg.get("years", work_df['alapadat_ev'].unique()))
+    # Get years from config or from data
+    if cfg.get("years"):
+        years = sorted(cfg.get("years"))
+    else:
+        years = sorted(work_df['alapadat_ev'].unique())
+    
+    years = [int(y) for y in years]
 
     counts = work_df.groupby('alapadat_ev')['park_ID'].nunique()
 
@@ -206,13 +231,23 @@ def report_totals(df, cfg, agg_map_all):
                 avg.append(avg_val)
             except (ValueError, TypeError):
                 avg.append(0.0)
-        out[f"{int(y)} Átlag"] = avg
-
-    out["Növekedés"] = out[f"{int(years[-1])} Átlag"] - out[f"{int(years[0])} Átlag"]
-    out["Növekedés (%)"] = ((out[f"{int(years[-1])} Átlag"] * 100 / out[f"{int(years[0])} Átlag"].replace(0, np.nan)) - 100).fillna(0)
-    out["Növekedés (%%)"] = (out["Növekedés"] * 100 / out[f"{int(years[0])} Átlag"].replace(0, np.nan)).fillna(0)
-    #out["Növekedés (%)"] = safe_div(out["Növekedés"], out[f"{int(years[0])} Átlag"])
-  
+        out[f"{y} Átlag"] = avg
+    
+    
+    first_year_col = f"{int(years[0])} Átlag"
+    last_year_col = f"{int(years[-1])} Átlag"
+    
+    out["Növekedés"] = out[last_year_col] - out[first_year_col]
+    #Use .values to convert Series to numpy arrays for element-wise division
+    out["Növekedés (%)"] = (out["Növekedés"].values / out[first_year_col].replace(0, np.nan).values * 100)
+    out["Növekedés (%)"] = out["Növekedés (%)"].fillna(0).round(2)
+    
+    #out["Növekedés"] = out[f"{int(years[-1])} Átlag"] - out[f"{int(years[0])} Átlag"]
+    #out["Növekedés (%)"] = ((out[f"{int(years[-1])} Átlag"] * 100 / out[f"{int(years[0])} Átlag"].replace(0, np.nan)) - 100).fillna(0)
+    #out["Növekedés (%%)"] = (out["Növekedés"] * 100 / out[f"{int(years[0])} Átlag"].replace(0, np.nan)).fillna(0)
+    
+    #safe_div() expects Series with the same length, but you're passing a Series and a column from a DataFrame with different indices.
+    
     return round_by_structure(out)
            
 
@@ -226,16 +261,19 @@ def main():
 
     reporting = [
         {"func": report_totals, "cfg": {"type": "totals", "agg": "small", "years": [2021, 2022, 2023]}},
-        {"func": report_pivot, "cfg": {"type": "novekedes", "group_col": "park_regio", "metric": "arbevetel", "agg": "small", "years": [2021, 2022, 2023]}},
+        {"func": report_pivot, "cfg": {"type": "novekedes", "group_col": "park_regio", "metrics": ["arbevetel", "exportarany"], "agg": "small", "years": [2021]}},
         {"func": report_emails, "cfg": {"type": "emails", "filter_col": "park_regio", "filter_values": ["Észak-Magyarország"]}},
         {"func": report_missing, "cfg": {"type": "missing", "year": 2024}},
     ]
     for report in reporting:
         try:
             run_report(report, df, AGG_CONFIG)
+        #except Exception as e:
+            #log(f"ERROR in {report['cfg']['type']}: {e}")
         except Exception as e:
+            import traceback
             log(f"ERROR in {report['cfg']['type']}: {e}")
-            
+            traceback.print_exc()   
 
 if __name__ == "__main__":
     main()
