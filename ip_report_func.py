@@ -144,12 +144,14 @@ def report_missing(df, cfg, agg_map=None):
 def report_pivot(df, cfg, agg_map_all):
     agg_dict = agg_map_all[cfg["agg"]]
     df = apply_filters(df, cfg.get("years"), cfg.get("group_col"), cfg.get("filter_values"))
+    metrics_to_use = [cfg.get("metric")] if cfg.get("metric") else list(agg_dict.keys())
+    agg_dict_filtered = {m: agg_dict[m] for m in metrics_to_use if m in agg_dict}
     
     pivot = df.pivot_table(
-        values=cfg.get("metric") if cfg.get("metric") else list(agg_dict.keys()), 
-        index=cfg["group_col"], 
-        columns="alapadat_ev", 
-        aggfunc=agg_dict, 
+        values=metrics_to_use,
+        index=cfg["group_col"],
+        columns="alapadat_ev",
+        aggfunc=agg_dict_filtered,
         fill_value=0
     )
     
@@ -157,18 +159,10 @@ def report_pivot(df, cfg, agg_map_all):
 
     # éveket a pivotból veszi
     years = sorted({str(col).split("_")[-1] for col in pivot.columns})
-
-    # Add Diff columns
-    for i in range(1, len(years)):
-        y1, y2 = years[i-1], years[i]
-        for metric in agg_dict:
-            c1 = f"{metric}_{y1}"
-            c2 = f"{metric}_{y2}"
-            if c1 in pivot.columns and c2 in pivot.columns:
-                pivot[f"{metric}_Diff_{y1}_{y2}"] = pivot[c2] - pivot[c1]
-
+    print(f"Years: {years}")
+    #years = sorted(cfg.get("years", pivot['alapadat_ev'].unique()))
     # Add TOTAL columns
-    if len(years) > 2:
+    if len(years) >= 2:
         y1, y2 = years[0], years[-1]
         for metric in agg_dict:
             c1 = f"{metric}_{y1}"
@@ -180,7 +174,9 @@ def report_pivot(df, cfg, agg_map_all):
                         pivot[diff_col],
                         pivot[c1]
                     )
-
+    
+    pivot["Növekedés"] = pivot[f"{metric}_{int(years[-1])}"] - pivot[f"{metric}_{int(years[0])}"]
+    
     return round_by_structure(pivot)
 
 def report_totals(df, cfg, agg_map_all):
@@ -213,6 +209,10 @@ def report_totals(df, cfg, agg_map_all):
         out[f"{int(y)} Átlag"] = avg
 
     out["Növekedés"] = out[f"{int(years[-1])} Átlag"] - out[f"{int(years[0])} Átlag"]
+    out["Növekedés (%)"] = ((out[f"{int(years[-1])} Átlag"] * 100 / out[f"{int(years[0])} Átlag"].replace(0, np.nan)) - 100).fillna(0)
+    out["Növekedés (%%)"] = (out["Növekedés"] * 100 / out[f"{int(years[0])} Átlag"].replace(0, np.nan)).fillna(0)
+    #out["Növekedés (%)"] = safe_div(out["Növekedés"], out[f"{int(years[0])} Átlag"])
+  
     return round_by_structure(out)
            
 
