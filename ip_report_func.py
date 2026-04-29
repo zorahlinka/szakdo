@@ -53,6 +53,7 @@ def apply_filters(df, years=None, filter_col=None, filter_values=None):
         temp_df = temp_df[temp_df["alapadat_ev"].isin(years)]
     if filter_col and filter_values and filter_col in temp_df.columns:
         temp_df = temp_df[temp_df[filter_col].isin(filter_values)]
+    
     return temp_df
 
 def log(msg):
@@ -108,9 +109,17 @@ def load_data(db_path):
             tmp = pd.read_sql(f"SELECT * FROM {v}", conn)
             df = df.merge(tmp, on=["park_ID", "alapadat_ev"], how="left", suffixes=('', '_drop'))
             df = df.loc[:, ~df.columns.str.contains('_drop')]
+    
+    
+    numeric_cols = list(get_agg_config()["full"].keys())
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
     return df
-
-
+    print("EU_osszkoltseg non-null:", df["EU_osszkoltseg"].notna().sum())
+    print(df[["EU_osszkoltseg", "alapadat_ev"]].head(10))
+    
 # 4. REPORT FÜGGVÉNYEK
 
 def report_emails(df, cfg, agg_map=None):
@@ -156,10 +165,9 @@ def report_pivot(df, cfg, agg_map_all):
             metrics_to_use = [metrics_to_use]
     else:
         metrics_to_use = list(agg_dict.keys())
-    
-    
+        
     agg_dict_filtered = {m: agg_dict[m] for m in metrics_to_use if m in agg_dict}
-    
+
     pivot = df.pivot_table(
         values=metrics_to_use,
         index=cfg["group_col"],
@@ -169,18 +177,25 @@ def report_pivot(df, cfg, agg_map_all):
     )
     
     pivot.columns = [f"{metric}_{year}" for metric, year in pivot.columns]
-
+    
+    # Convert all columns to numeric
+    for col in pivot.columns:
+        pivot[col] = pd.to_numeric(pivot[col], errors='coerce')
+    
     # éveket a pivotból veszi
     years = sorted({int(str(col).split("_")[-1]) for col in pivot.columns})
     park_counts = df.groupby(cfg["group_col"])['park_ID'].nunique()
-        
+
+#The issue is an index mismatch. pivot is indexed by region, but park_counts is also indexed by region, and they don't align properly during division.
+#Use .values to convert both Series to numpy arrays, which bypasses the index alignment issue.
+
     for metric in agg_dict_filtered:
             for year in years:
                 col_name = f"{metric}_{year}"
                 if col_name not in pivot.columns:
                     continue
                 if col_name in pivot.columns:
-                    pivot[f"{metric}_{year}_Per_Park"] = pivot[col_name] / park_counts
+                    pivot[f"{metric}_{year}_Per_Park"] = pivot[col_name].values / park_counts.values
     
     # Változás számítása csak akkor, ha legalább 2 év van
     if len(years) >= 2:
@@ -203,6 +218,11 @@ def report_totals(df, cfg, agg_map_all):
     # Convert year column to int
     work_df['alapadat_ev'] = work_df['alapadat_ev'].astype(int)
     
+    for col in agg_dict.keys():
+        if col in work_df.columns:
+            work_df[col] = pd.to_numeric(work_df[col], errors='coerce')
+
+
     # Get years from config or from data
     if cfg.get("years"):
         years = sorted(cfg.get("years"))
@@ -260,9 +280,9 @@ def main():
     df = load_data(DB_PATH)
 
     reporting = [
-        {"func": report_totals, "cfg": {"type": "totals", "agg": "small", "years": [2021, 2022, 2023]}},
-        {"func": report_pivot, "cfg": {"type": "novekedes", "group_col": "park_regio", "metrics": ["arbevetel", "exportarany"], "agg": "small", "years": [2021]}},
-        {"func": report_emails, "cfg": {"type": "emails", "filter_col": "park_regio", "filter_values": ["Észak-Magyarország"]}},
+        {"func": report_totals, "cfg": {"type": "totals", "agg": "small", "years": [2023]}},
+        {"func": report_pivot, "cfg": {"type": "novekedes", "group_col": "park_regio", "agg": "small", "years": [2023]}},
+        {"func": report_emails, "cfg": {"type": "emails", "filter_col": "park_regio", "filter_values": ["Nyugat-Dunántúl"]}},
         {"func": report_missing, "cfg": {"type": "missing", "year": 2024}},
     ]
     for report in reporting:

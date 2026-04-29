@@ -102,6 +102,14 @@ column_mapping = {
     'Szolgáltatás kezdete': 'szolg_kezdet',
 }
 
+eldontendo_map = {
+    'igen': '1',
+    'nem': '0',
+}
+
+eldontendo = ['kamara', 'klaszter', 'oktatas_kozep', 'munkaugy', 'civil', 'ip', 'onkormanyzat', 'fejlesztesi_ugynokseg', 'export_ugynokseg', 'kulfoldi_ip', 'nemzetkozi_projekt', 'oktatas_felso', 'kutatointezet', 'kf_tevekenyseg', 'uj_technologia']
+
+
 allowed_columns = {
             'park_azonosito': ['park_nev'],
             'cimviselo_azonosito': ['cimviselo_nev'],
@@ -374,6 +382,8 @@ def transform_write_to_db(db, all_data, column_mapping):
     df_EU_tamogatas = all_data['Elnyert EU-s támogatás'].rename(columns=column_mapping)
     df_infrastruktura = all_data['Infrastruktúra'].rename(columns=column_mapping)
     df_szolgaltatasok = all_data['Szolgáltatások'].rename(columns=column_mapping)
+    
+    df_adatok[eldontendo] = df_adatok[eldontendo].replace(eldontendo_map)
     
 
     table_park_azonosito_data = df_adatok[['park_nev']].copy()
