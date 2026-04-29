@@ -117,9 +117,7 @@ def load_data(db_path):
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
     return df
-    print("EU_osszkoltseg non-null:", df["EU_osszkoltseg"].notna().sum())
-    print(df[["EU_osszkoltseg", "alapadat_ev"]].head(10))
-    
+       
 # 4. REPORT FÜGGVÉNYEK
 
 def report_emails(df, cfg, agg_map=None):
@@ -188,15 +186,26 @@ def report_pivot(df, cfg, agg_map_all):
 
 #The issue is an index mismatch. pivot is indexed by region, but park_counts is also indexed by region, and they don't align properly during division.
 #Use .values to convert both Series to numpy arrays, which bypasses the index alignment issue.
+    park_counts = park_counts.reindex(pivot.index).fillna(0)
 
     for metric in agg_dict_filtered:
-            for year in years:
-                col_name = f"{metric}_{year}"
-                if col_name not in pivot.columns:
-                    continue
-                if col_name in pivot.columns:
-                    pivot[f"{metric}_{year}_Per_Park"] = pivot[col_name].values / park_counts.values
-    
+        agg_type = agg_dict_filtered[metric]    
+            
+        for year in years:
+            col_name = f"{metric}_{year}"
+            per_park_col = f"{metric}_{year}_Per_Park"
+            if col_name not in pivot.columns:
+                continue
+            
+            if agg_type == "sum":
+                pivot[per_park_col] = (pivot[col_name] / park_counts) if park_counts.sum() != 0 else 0    
+            
+            elif agg_type == "mean":
+                pivot[per_park_col] = pivot[col_name]
+            else:
+                pivot[per_park_col] = np.nan
+            
+                        
     # Változás számítása csak akkor, ha legalább 2 év van
     if len(years) >= 2:
         y1, y2 = years[0], years[-1]
@@ -213,16 +222,11 @@ def report_pivot(df, cfg, agg_map_all):
 
 def report_totals(df, cfg, agg_map_all):
     agg_dict = agg_map_all[cfg["agg"]]
-    work_df = apply_filters(df, years=cfg.get("years"))
+    work_df = apply_filters(df, years=cfg.get("years"), filter_col=cfg.get("filter_col"), filter_values=cfg.get("filter_values"))
     
     # Convert year column to int
     work_df['alapadat_ev'] = work_df['alapadat_ev'].astype(int)
     
-    for col in agg_dict.keys():
-        if col in work_df.columns:
-            work_df[col] = pd.to_numeric(work_df[col], errors='coerce')
-
-
     # Get years from config or from data
     if cfg.get("years"):
         years = sorted(cfg.get("years"))
@@ -235,32 +239,36 @@ def report_totals(df, cfg, agg_map_all):
 
     all_parks_agg = work_df.groupby('alapadat_ev').agg(agg_dict)
     
-    # Convert all values to numeric
+    # Convert all values to numeric, transpose
     all_parks_agg = all_parks_agg.apply(pd.to_numeric, errors='coerce').transpose()
 
     out = all_parks_agg
 
+
     for y in all_parks_agg.columns:
-        cnt = counts[y] if y in counts else 0
-        series = all_parks_agg[y]
-        avg = []
-        for total in series:
-            try:
-                total_val = float(total) if pd.notna(total) else 0.0
-                avg_val = total_val / cnt if cnt != 0 else 0.0
-                avg.append(avg_val)
-            except (ValueError, TypeError):
-                avg.append(0.0)
-        out[f"{y} Átlag"] = avg
+        cnt = counts.get(y, 0)
+
+        for metric in out.index:
+            agg_type = agg_dict.get(metric)
+            col_name = y
+            avg_col_name = f"{y} Átlag"
+            
+            if agg_type == "sum":
+                out.loc[metric, avg_col_name] = out.loc[metric, col_name] / cnt if cnt != 0 else 0
+            elif agg_type == "mean":
+                out.loc[metric, avg_col_name] = out.loc[metric, col_name]
+            else:
+                out.loc[metric, avg_col_name] = np.nan
+                
     
+    if len(years) >= 2:
+        first_year_col = f"{int(years[0])} Átlag"
+        last_year_col = f"{int(years[-1])} Átlag"
     
-    first_year_col = f"{int(years[0])} Átlag"
-    last_year_col = f"{int(years[-1])} Átlag"
-    
-    out["Növekedés"] = out[last_year_col] - out[first_year_col]
-    #Use .values to convert Series to numpy arrays for element-wise division
-    out["Növekedés (%)"] = (out["Növekedés"].values / out[first_year_col].replace(0, np.nan).values * 100)
-    out["Növekedés (%)"] = out["Növekedés (%)"].fillna(0).round(2)
+        out["Növekedés"] = out[last_year_col] - out[first_year_col]
+        #Use .values to convert Series to numpy arrays for element-wise division
+        out["Növekedés (%)"] = (out["Növekedés"].values / out[first_year_col].replace(0, np.nan).values * 100)
+        out["Növekedés (%)"] = out["Növekedés (%)"].fillna(0).round(2)
     
     #out["Növekedés"] = out[f"{int(years[-1])} Átlag"] - out[f"{int(years[0])} Átlag"]
     #out["Növekedés (%)"] = ((out[f"{int(years[-1])} Átlag"] * 100 / out[f"{int(years[0])} Átlag"].replace(0, np.nan)) - 100).fillna(0)
@@ -280,7 +288,7 @@ def main():
     df = load_data(DB_PATH)
 
     reporting = [
-        {"func": report_totals, "cfg": {"type": "totals", "agg": "small", "years": [2023]}},
+        {"func": report_totals, "cfg": {"type": "totals", "agg": "small", "years": [2021, 2022, 2023], "filter_col": "park_regio", "filter_values": ["Nyugat-Dunántúl"]}},
         {"func": report_pivot, "cfg": {"type": "novekedes", "group_col": "park_regio", "agg": "small", "years": [2023]}},
         {"func": report_emails, "cfg": {"type": "emails", "filter_col": "park_regio", "filter_values": ["Nyugat-Dunántúl"]}},
         {"func": report_missing, "cfg": {"type": "missing", "year": 2024}},
