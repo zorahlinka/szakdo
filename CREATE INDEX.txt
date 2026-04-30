@@ -1,0 +1,56 @@
+CREATE INDEX idx_vallalkozasok_latest_row 
+ON vallalkozasok (park_ID, vallalkozasok_ev, datum DESC);
+
+-- 2. Terulet index
+CREATE INDEX idx_terulet_latest_row 
+ON terulet (park_ID, terulet_ev, datum DESC);
+
+-- 3. Infrastrukturafejlesztes index
+CREATE INDEX idx_infra_fejl_latest_row 
+ON infrastrukturafejlesztes (park_ID, felhasznalas_ev, datum DESC);
+
+-- 4. EU_tamogatas index (itt a tartalom is a partíció része!)
+CREATE INDEX idx_eu_tamogatas_latest_row 
+ON EU_tamogatas (park_ID, tamogatas_ev, tamogatas_tartalom, datum DESC);
+
+-- 5. Kapcsolatok index
+CREATE INDEX idx_kapcsolatok_latest_row 
+ON kapcsolatok (park_ID, kapcsolatok_ev, datum DESC);
+
+-- 6. Alapadat index
+CREATE INDEX idx_alapadat_latest_row 
+ON alapadat (park_ID, alapadat_ev, datum DESC);
+
+-- 7. Management index (email alapú egyediséghez)
+CREATE INDEX idx_management_latest_row 
+ON management (park_ID, management_email, datum DESC);
+
+-- 8. Infrastruktura index (típus alapú egyediséghez)
+CREATE INDEX idx_infrastruktura_latest_row 
+ON infrastruktura (park_ID, infra_ID, datum DESC);
+
+-- 9. Szolgaltatas index
+CREATE INDEX idx_szolgaltatas_latest_row 
+ON szolgaltatas (park_ID, szolg_ID, datum DESC);
+
+
+
+CREATE INDEX idx_<tabla>_latest
+ON <tabla>(
+    <partition_oszlop_1>,
+    <partition_oszlop_2>,
+    ...
+    datum DESC
+);
+
+ha van én mező
+CREATE INDEX idx_<tabla>_latest
+ON <tabla>(park_ID, <ev_oszlop>, datum DESC);
+
+ha több dimenzió van
+CREATE INDEX idx_<tabla>_latest
+ON <tabla>(park_ID, <dim1>, <dim2>, datum DESC);
+
+ha nincs én (entity)
+CREATE INDEX idx_<tabla>_latest
+ON <tabla>(park_ID, <entity_ID>, datum DESC);

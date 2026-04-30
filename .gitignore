@@ -1,1 +1,5 @@
 IP
+*.ods
+*.pdf
+*.db
+__pycache__/

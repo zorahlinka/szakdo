@@ -87,12 +87,12 @@ def export_to_ods(result, name):
 
     print(f"Mentve: {file_name}")
 
-def run_report(report, df, agg_config):
+def run_report(report, df, agg_config, mgmt_df=None):
     name = generate_report_name(report["cfg"])
     
     log(f"Running: {report['cfg']['type']}")
 
-    result = report["func"](df, report["cfg"], agg_config)
+    result = report["func"](df, report["cfg"], agg_config, mgmt_df)
 
     export_to_ods(result, name)
 
@@ -101,7 +101,7 @@ def run_report(report, df, agg_config):
 
 # 3. ADATBETÖLTÉS
 
-def load_data(db_path):
+def load_data(conn):
     views = ["park_base", "vallalkozasok_latest", "terulet_latest", "infrastrukturafejlesztes_latest", "EU_tamogatas_latest", "kapcsolatok_latest"]
     
     df = pd.read_sql("SELECT * FROM park_base", conn)
@@ -109,9 +109,8 @@ def load_data(db_path):
     for v in views[1:]:
         tmp = pd.read_sql(f"SELECT * FROM {v}", conn)
         tmp = tmp.groupby(["park_ID", "alapadat_ev"], as_index=False).first()
-        df = df.merge(tmp, on=["park_ID", "alapadat_ev"], how="left", validate="one_to_one")
-            #suffixes=('', '_drop')
-            #df = df.loc[:, ~df.columns.str.contains('_drop')]
+        df = df.merge(tmp, on=["park_ID", "alapadat_ev"], how="left", validate="one_to_one", suffixes=('', '_drop'))
+        df = df.loc[:, ~df.columns.str.contains('_drop')]
     
     
     numeric_cols = list(get_agg_config()["full"].keys())
@@ -123,105 +122,51 @@ def load_data(db_path):
        
 # 4. REPORT FÜGGVÉNYEK
 
-def report_emails(df, cfg, mgmt=None):
+def report_emails(df, cfg, agg_map=None, mgmt_df=None):
     f_df = apply_filters(df, filter_col=cfg.get("filter_col"), filter_values=cfg.get("filter_values"))
     
-    if mgmt is not None:
-        f_df = f_df.merge(mgmt, on="park_ID", how="left")
+    if mgmt_df is not None:
+        f_df = f_df.merge(mgmt_df, on="park_ID", how="left")
     
     emails = pd.concat([f_df["park_email"], f_df["management_email"]], ignore_index=True)
-    emails = (
-        emails.dropna()
-              .drop_duplicates()
-              .sort_values()
-              .reset_index(drop=True)
-    )
+    emails = (emails.dropna().drop_duplicates().sort_values().reset_index(drop=True))
 
     # per-park view
     details = (
-        f_df[["park_ID", "park_nev", "park_email", "management_email"]]
-        .drop_duplicates()
-        .reset_index(drop=True)
-    )
+        f_df[["park_ID", "park_nev", "park_email", "management_email"]].drop_duplicates().reset_index(drop=True))
 
     return {
         "email_lista": pd.DataFrame({"Email": emails}),
         "reszletes": details
     }
     
-    
-    
-    #emails = pd.concat([f_df["park_email"].dropna(), f_df["management_email"].dropna()])
-    #emails = emails.drop_duplicates().sort_values().reset_index(drop=True)
-    #details = f_df[["park_nev", "park_email", "management_email"]].drop_duplicates().reset_index(drop=True)
-    #return {"lista": pd.DataFrame({"Email": emails}), "reszletes": details}
 
-
-
-
-
-
-
-def report_missing(df, cfg, agg_map=None):
+def report_missing(df, cfg, agg_map=None, mgmt_df=None):
     year = cfg["year"]
+    filtered_df = apply_filters(df, years=None, filter_col=cfg.get("filter_col"), filter_values=cfg.get("filter_values"))
 
     # Get all unique parks
-    all_parks = df[["park_nev", "park_email", "management_email"]].drop_duplicates()
+    all_parks = filtered_df[["park_ID", "park_nev", "park_email", "alapadat_ev"]] #.drop_duplicates()
+    parks_with_year = (apply_filters(all_parks,years=[year])[["park_ID"]].drop_duplicates())
+    missing = all_parks[~all_parks["park_ID"].isin(parks_with_year["park_ID"])].copy() #reset_index(drop=True)
 
-    # Get parks that have data for this year
-    parks_with_year = apply_filters(df, years=[year], filter_col=cfg.get("filter_col"), filter_values=cfg.get("filter_values"))
-    parks_with_data = parks_with_year[["park_nev"]].drop_duplicates()
+    if mgmt_df is not None:
+        missing = missing.merge(mgmt_df, on="park_ID", how="left")
+    else:
+        missing["management_email"] = np.nan
 
-    # Parks that DON'T have data for this year
-    missing = all_parks[~all_parks["park_nev"].isin(parks_with_data["park_nev"])].reset_index(drop=True)
+    missing = missing.reset_index(drop=True)
 
-    # Group by park to consolidate emails
-    consolidated = missing.groupby('park_nev').agg({
-        'park_email': 'first',  # Take first park email (should be the same for all rows of same park)
-        'management_email': lambda x: '; '.join(sorted(x.dropna().unique()))  # Combine all management emails
-    }).reset_index()
+    consolidated = (missing.groupby(["park_ID", "park_nev"], as_index=False).agg({
+            "park_email": "first",
+            "management_email": lambda x: "; ".join(sorted(x.dropna().unique()))
+        })
+    )
 
     return {"hianyzo": consolidated}
 
 
-"""def report_missing(df, cfg, agg_map=None, mgmt=None):
-
-    year = cfg["year"]
-
-    # all parks (dimension-like)
-    all_parks = (
-        df[["park_ID", "park_nev", "park_email"]]
-        .drop_duplicates()
-    )
-
-    # parks with data in given year
-    parks_with_data = (
-        apply_filters(df, years=[year])
-        [["park_ID"]]
-        .drop_duplicates()
-    )
-
-    # missing parks
-    missing = all_parks[
-        ~all_parks["park_ID"].isin(parks_with_data["park_ID"])
-    ].copy()
-
-    # attach management emails safely
-    if mgmt is not None:
-        missing = missing.merge(mgmt, on="park_ID", how="left")
-
-    missing = missing.reset_index(drop=True)
-
-    return {
-        "hianyzo": missing
-    }"""
-
-
-
-
-
-
-def report_pivot(df, cfg, agg_map_all):
+def report_pivot(df, cfg, agg_map_all, mgmt_df=None):
     agg_dict = agg_map_all[cfg["agg"]]
     df = apply_filters(df, cfg.get("years"), cfg.get("group_col"), cfg.get("filter_values"))
     
@@ -293,7 +238,7 @@ def report_pivot(df, cfg, agg_map_all):
           
     return round_by_structure(pivot)
 
-def report_totals(df, cfg, agg_map_all):
+def report_totals(df, cfg, agg_map_all, mgmt_df=None):
     agg_dict = agg_map_all[cfg["agg"]]
     work_df = apply_filters(df, years=cfg.get("years"), filter_col=cfg.get("filter_col"), filter_values=cfg.get("filter_values"))
     
@@ -360,19 +305,22 @@ def main():
     with sqlite3.connect(DB_PATH) as conn:
         df = load_data(conn)
 
-        management_df = pd.read_sql("SELECT park_ID, management_email FROM management_latest", conn)
-        #management_df = management_df.groupby("park_ID", as_index=False).first()
+        mgmt_df = pd.read_sql("SELECT park_ID, management_email FROM management_latest", conn)
+        
+        mgmt_df = (mgmt_df.groupby("park_ID")["management_email"].apply(lambda x: "; ".join(sorted(x.dropna().unique()))).reset_index())
+
+
     conn.close()
 
     reporting = [
         {"func": report_totals, "cfg": {"type": "totals", "agg": "small", "years": [2021, 2022, 2023], "filter_col": "park_regio", "filter_values": ["Közép-Dunántúl"]}},
         {"func": report_pivot, "cfg": {"type": "novekedes", "group_col": "park_regio", "agg": "small", "years": [2023]}},
-        {"func": report_emails, "cfg": {"type": "emails", "filter_col": "park_varmegye", "filter_values": ["Vas"]}},
-        {"func": report_missing, "cfg": {"type": "missing", "year": 2024}},
+        {"func": report_emails, "cfg": {"type": "emails", "filter_col": "park_regio", "filter_values": ["Közép-Dunántúl"]}},
+        {"func": report_missing, "cfg": {"type": "missing", "year": 2024, "filter_col": "park_regio", "filter_values": ["Közép-Dunántúl"]}},
     ]
     for report in reporting:
         try:
-            run_report(report, df, AGG_CONFIG)
+            run_report(report, df, AGG_CONFIG, mgmt_df)
         #except Exception as e:
             #log(f"ERROR in {report['cfg']['type']}: {e}")
         except Exception as e:

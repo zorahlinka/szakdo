@@ -6,11 +6,9 @@ SELECT
     a.park_regio,
     a.park_varmegye,
     a.alapadat_ev,
-    a.park_email,
-    m.management_email
+    a.park_email
 FROM park_azonosito p
-LEFT JOIN alapadat_latest a ON p.park_ID = a.park_ID
-LEFT JOIN management_latest m ON p.park_ID = m.park_ID;
+LEFT JOIN alapadat_latest a ON p.park_ID = a.park_ID;
 
 
 -- 1. Vállalkozások legfrissebb adatai
