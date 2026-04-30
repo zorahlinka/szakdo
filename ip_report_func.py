@@ -103,12 +103,15 @@ def run_report(report, df, agg_config):
 
 def load_data(db_path):
     views = ["park_base", "vallalkozasok_latest", "terulet_latest", "infrastrukturafejlesztes_latest", "EU_tamogatas_latest", "kapcsolatok_latest"]
-    with sqlite3.connect(db_path) as conn:
-        df = pd.read_sql("SELECT * FROM park_base", conn)
-        for v in views[1:]:
-            tmp = pd.read_sql(f"SELECT * FROM {v}", conn)
-            df = df.merge(tmp, on=["park_ID", "alapadat_ev"], how="left", suffixes=('', '_drop'))
-            df = df.loc[:, ~df.columns.str.contains('_drop')]
+    
+    df = pd.read_sql("SELECT * FROM park_base", conn)
+    
+    for v in views[1:]:
+        tmp = pd.read_sql(f"SELECT * FROM {v}", conn)
+        tmp = tmp.groupby(["park_ID", "alapadat_ev"], as_index=False).first()
+        df = df.merge(tmp, on=["park_ID", "alapadat_ev"], how="left", validate="one_to_one")
+            #suffixes=('', '_drop')
+            #df = df.loc[:, ~df.columns.str.contains('_drop')]
     
     
     numeric_cols = list(get_agg_config()["full"].keys())
@@ -120,12 +123,44 @@ def load_data(db_path):
        
 # 4. REPORT FÜGGVÉNYEK
 
-def report_emails(df, cfg, agg_map=None):
+def report_emails(df, cfg, mgmt=None):
     f_df = apply_filters(df, filter_col=cfg.get("filter_col"), filter_values=cfg.get("filter_values"))
-    emails = pd.concat([f_df["park_email"].dropna(), f_df["management_email"].dropna()])
-    emails = emails.drop_duplicates().sort_values().reset_index(drop=True)
-    details = f_df[["park_nev", "park_email", "management_email"]].drop_duplicates().reset_index(drop=True)
-    return {"lista": pd.DataFrame({"Email": emails}), "reszletes": details}
+    
+    if mgmt is not None:
+        f_df = f_df.merge(mgmt, on="park_ID", how="left")
+    
+    emails = pd.concat([f_df["park_email"], f_df["management_email"]], ignore_index=True)
+    emails = (
+        emails.dropna()
+              .drop_duplicates()
+              .sort_values()
+              .reset_index(drop=True)
+    )
+
+    # per-park view
+    details = (
+        f_df[["park_ID", "park_nev", "park_email", "management_email"]]
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )
+
+    return {
+        "email_lista": pd.DataFrame({"Email": emails}),
+        "reszletes": details
+    }
+    
+    
+    
+    #emails = pd.concat([f_df["park_email"].dropna(), f_df["management_email"].dropna()])
+    #emails = emails.drop_duplicates().sort_values().reset_index(drop=True)
+    #details = f_df[["park_nev", "park_email", "management_email"]].drop_duplicates().reset_index(drop=True)
+    #return {"lista": pd.DataFrame({"Email": emails}), "reszletes": details}
+
+
+
+
+
+
 
 def report_missing(df, cfg, agg_map=None):
     year = cfg["year"]
@@ -147,6 +182,44 @@ def report_missing(df, cfg, agg_map=None):
     }).reset_index()
 
     return {"hianyzo": consolidated}
+
+
+"""def report_missing(df, cfg, agg_map=None, mgmt=None):
+
+    year = cfg["year"]
+
+    # all parks (dimension-like)
+    all_parks = (
+        df[["park_ID", "park_nev", "park_email"]]
+        .drop_duplicates()
+    )
+
+    # parks with data in given year
+    parks_with_data = (
+        apply_filters(df, years=[year])
+        [["park_ID"]]
+        .drop_duplicates()
+    )
+
+    # missing parks
+    missing = all_parks[
+        ~all_parks["park_ID"].isin(parks_with_data["park_ID"])
+    ].copy()
+
+    # attach management emails safely
+    if mgmt is not None:
+        missing = missing.merge(mgmt, on="park_ID", how="left")
+
+    missing = missing.reset_index(drop=True)
+
+    return {
+        "hianyzo": missing
+    }"""
+
+
+
+
+
 
 def report_pivot(df, cfg, agg_map_all):
     agg_dict = agg_map_all[cfg["agg"]]
@@ -284,13 +357,17 @@ def report_totals(df, cfg, agg_map_all):
 def main():
     DB_PATH = "IP"
     AGG_CONFIG = get_agg_config()
-    
-    df = load_data(DB_PATH)
+    with sqlite3.connect(DB_PATH) as conn:
+        df = load_data(conn)
+
+        management_df = pd.read_sql("SELECT park_ID, management_email FROM management_latest", conn)
+        #management_df = management_df.groupby("park_ID", as_index=False).first()
+    conn.close()
 
     reporting = [
-        {"func": report_totals, "cfg": {"type": "totals", "agg": "small", "years": [2021, 2022, 2023], "filter_col": "park_regio", "filter_values": ["Nyugat-Dunántúl"]}},
+        {"func": report_totals, "cfg": {"type": "totals", "agg": "small", "years": [2021, 2022, 2023], "filter_col": "park_regio", "filter_values": ["Közép-Dunántúl"]}},
         {"func": report_pivot, "cfg": {"type": "novekedes", "group_col": "park_regio", "agg": "small", "years": [2023]}},
-        {"func": report_emails, "cfg": {"type": "emails", "filter_col": "park_regio", "filter_values": ["Nyugat-Dunántúl"]}},
+        {"func": report_emails, "cfg": {"type": "emails", "filter_col": "park_varmegye", "filter_values": ["Vas"]}},
         {"func": report_missing, "cfg": {"type": "missing", "year": 2024}},
     ]
     for report in reporting:
