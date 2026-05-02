@@ -26,7 +26,7 @@ column_mapping = {
     'Út/utca': 'park_utca',
     'Irányítószám': 'park_iranyitoszam',
     'Vármegye': 'park_varmegye',
-    'Helyrajzi szám': 'park_hrsz',  
+    'Helyrajzi szám': 'park_hrsz',
     'Régió': 'park_regio',
     'Összterület (ha)': 'osszterulet',
     'Hasznosítható terület (ha)': 'hasznosithato_ter',
@@ -55,15 +55,15 @@ column_mapping = {
     'Önálló kutatási tevékenység': 'kf_tevekenyseg',
     'Piacközeli stádiumban lévő technológiák alkalmazása': 'uj_technologia',
     'Maga nyújtja (%)': 'sajat_szolg_arany',
-    'Kiszervezi (%)': 'kiszervezett_szolg_arany', 
-    'Vállalkozások területe (ha)': 'vallalkozasok_terulet', 
-    'Vállalkozások száma': 'vallalkozasok_szama', 
+    'Kiszervezi (%)': 'kiszervezett_szolg_arany',
+    'Vállalkozások területe (ha)': 'vallalkozasok_terulet',
+    'Vállalkozások száma': 'vallalkozasok_szama',
     'Foglalkoztatottak létszáma (fő)': 'vallalkozasok_foglalkoztatott',
-    'Beruházási érték (millió Ft)': 'beruhazasi_ertek', 
-    'Árbevétel (millió Ft)': 'arbevetel', 
-    'Exportarány (%)': 'exportarany', 
-    'KKV-k száma': 'kkv_szam', 
-    'Nagyvállalatok száma': 'nagyvall_szam', 
+    'Beruházási érték (millió Ft)': 'beruhazasi_ertek',
+    'Árbevétel (millió Ft)': 'arbevetel',
+    'Exportarány (%)': 'exportarany',
+    'KKV-k száma': 'kkv_szam',
+    'Nagyvállalatok száma': 'nagyvall_szam',
     'Egyéb vállalkozások száma': 'egyeb_vall_szam',
     'Mely évre vonatkoznak az adatok?': 'vallalkozasok_ev',
     'Saját forrás (millió Ft)': 'sajat_forras',
@@ -183,17 +183,17 @@ def year_value(value):
 
 # Beolvasás
 def read_excel(excel_file, SHEETS):
-    try:   
+    try:
         return pd.read_excel(excel_file, sheet_name=SHEETS, engine='odf', header=1)
     except Exception as e:
         print(f"Hiba történt az Excel fájl beolvasása során: {e}")
-        return None 
+        return None
 
 # Adatellenőrzés
 def data_validation(all_data):
     errors = []
     EPS = 1e-6 # kis érték a lebegőpontos összehasonlításhoz
-   
+
     for sheet_name, df in all_data.items():
          # Vectorized validations
         for col in val_rules["text_255"]:
@@ -303,7 +303,7 @@ def data_validation(all_data):
                     line = idx + 2
                     errors.append(f"{sheet_name} - {line}. sor: '{col}' Érvénytelen telefonszám.")
 
-            
+
         # Komplex adatellenőrzés
         for idx, row in df.iterrows():
             line = idx + 2
@@ -377,19 +377,32 @@ def insert_df(transaction_conn, table_name, dataframe):
 
 # Fő függvény az adatok transzformálásához és adatbázisba írásához
 def transform_write_to_db(db, all_data, column_mapping):
-    # Transform
-        
+    # -------------------------------------------------------------------------
+    # 1. OSZLOPNEVEK ÁTNEVEZÉSE
+    # Az összes munkalap DataFrame-jének oszlopneveit a column_mapping szótár
+    # alapján magyarra (belső névkonvencióra) cseréljük.
+    # -------------------------------------------------------------------------
     df_adatok = all_data['Adatok'].rename(columns=column_mapping)
     df_management = all_data['Management'].rename(columns=column_mapping)
     df_EU_tamogatas = all_data['Elnyert EU-s támogatás'].rename(columns=column_mapping)
     df_infrastruktura = all_data['Infrastruktúra'].rename(columns=column_mapping)
     df_szolgaltatasok = all_data['Szolgáltatások'].rename(columns=column_mapping)
-    
-    df_adatok[eldontendo] = df_adatok[eldontendo].replace(eldontendo_map)
-    
 
+    # -------------------------------------------------------------------------
+    # 2. IGEN/NEM ÉRTÉKEK NUMERIKUS KÓDOLÁSA
+    # Az eldontendo listában szereplő logikai (igen/nem) oszlopokat 1/0 értékre
+    # alakítjuk az adatbázisba írás előtt.
+    # -------------------------------------------------------------------------
+    df_adatok[eldontendo] = df_adatok[eldontendo].replace(eldontendo_map)
+
+    # -------------------------------------------------------------------------
+    # 3. TÁBLÁNKÉNTI ADATKIVÁGÁS
+    # Minden adatbázis-táblához külön DataFrame-t hozunk létre, csak a szükséges
+    # oszlopokat megtartva. Ez biztosítja, hogy az insert_df() csak az engedélyezett
+    # oszlopokat kapja meg.
+    # -------------------------------------------------------------------------
     table_park_azonosito_data = df_adatok[['park_nev']].copy()
-    table_cimviselo_azonosito_data = df_adatok[['cimviselo_nev']].copy()    
+    table_cimviselo_azonosito_data = df_adatok[['cimviselo_nev']].copy()
     table_cimviselo_data = df_adatok[['cimviselo_foglalkoztatott', 'cimviselo_cim', 'osszetetel_allam', 'osszetetel_onkormanyzat', 'osszetetel_belfoldi_magan', 'osszetetel_kulfoldi', 'osszetetel_egyeb',]].copy()
     table_alapadat_data = df_adatok[['ip_cimszerzes', 'tp_cimszerzes', 'park_email', 'park_telepules', 'park_utca', 'park_iranyitoszam', 'park_varmegye', 'park_regio', 'sajat_szolg_arany' , 'kiszervezett_szolg_arany', 'park_honlap', 'alapadat_ev']].copy()
     table_alapadat_data = table_alapadat_data.rename(columns={'alapadatok_ev': 'alapadat_ev'})
@@ -401,14 +414,26 @@ def transform_write_to_db(db, all_data, column_mapping):
     table_infrastrukturafejlesztes_data = df_adatok[['felhasznalas_ev', 'sajat_forras', 'allami_forras', 'onkormanyzati_forras', 'EU_forras', 'bankhitel', 'tagi_kolcson', 'tokeemeles', 'egyeb_forras', 'osszes_forras']].copy()
     table_szolg_fajta_data = df_szolgaltatasok[['szolg_tipus','szolg_nev']].copy()
     table_szolgaltatasok_data = df_szolgaltatasok[['szolg_tipus','szolg_nev','szolg_tartalom','szolgaltato_fajta','szolgaltato_nev','szolg_kezdet']].copy()
+    # A helyrajzi számok vesszővel elválasztott listát alkothatnak egy cellában;
+    # ezeket külön sorokra bontjuk (explode), majd eltávolítjuk a szóközöket.
     table_helyrajzi_szam_data = df_adatok['park_hrsz'].astype(str).str.split(',').explode().str.strip().to_frame(name='park_hrsz').copy()
     table_kapcsolatok_data = df_adatok[['kamara', 'klaszter', 'oktatas_kozep', 'munkaugy', 'civil', 'ip', 'onkormanyzat', 'fejlesztesi_ugynokseg', 'export_ugynokseg', 'kulfoldi_ip', 'nemzetkozi_projekt', 'oktatas_felso', 'kutatointezet', 'kf_tevekenyseg', 'uj_technologia', 'kapcsolatok_ev']].copy()
     table_terulet_data = df_adatok[['osszterulet', 'hasznosithato_ter', 'beepitett_ter', 'hasznosithato_szabad_ter', 'hasznosithato_szabad_arany', 'parkolo', 'zoldterulet', 'berbeadott_ter_arany', 'eladott_ter_arany', 'terulet_ev']].copy()
 
-    #Write to DB
+    # -------------------------------------------------------------------------
+    # 4. ADATBÁZISBA ÍRÁS
+    # -------------------------------------------------------------------------
     try:
         with sqlite3.connect(db) as conn:
             cursor = conn.cursor()
+
+            # -----------------------------------------------------------------
+            # 4a. PARK AZONOSÍTÁSA VAGY FELVÉTELE (park_azonosito tábla)
+            # Fuzzy egyezéssel (90%-os küszöb) megkeressük, hogy a beérkező park
+            # neve szerepel-e már az adatbázisban. Ha igen, az egyező park_ID-t
+            # használjuk; ha nem, új rekordot szúrunk be és lekérdezzük az
+            # automatikusan generált park_ID-t.
+            # -----------------------------------------------------------------
             db_park_azonosito = pd.read_sql_query("SELECT park_ID, park_nev, aktiv FROM park_azonosito WHERE aktiv = 1;", conn)
             db_cimviselo_azonosito = pd.read_sql_query("SELECT cimviselo_ID, cimviselo_nev FROM cimviselo_azonosito;", conn)
 
@@ -420,18 +445,27 @@ def transform_write_to_db(db, all_data, column_mapping):
                 insert_df(conn, 'park_azonosito', table_park_azonosito_data)
                 park_id = cursor.execute("SELECT park_ID FROM park_azonosito WHERE park_nev = ?", (park_tocheck,)).fetchone()[0]
                 print(f"Új park név hozzáadva: '{park_tocheck}') (park_ID: {park_id})")
-               
-                    
+
+            # -----------------------------------------------------------------
+            # 4b. CÍMVISELŐ AZONOSÍTÁSA VAGY FELVÉTELE (cimviselo_azonosito tábla)
+            # A park azonosításához hasonló logika, de 85%-os egyezési küszöbbel,
+            # mivel a szervezetnevek változatosabbak lehetnek.
+            # -----------------------------------------------------------------
             cimviselo_tocheck = table_cimviselo_azonosito_data['cimviselo_nev'].iloc[0]
             cimviselo_id = match_cimviselo_ID(cimviselo_tocheck, db_cimviselo_azonosito, threshold=85)
             if cimviselo_id is not None:
                 print(f"'{cimviselo_tocheck}' hasonló címviselő név találat: '{db_cimviselo_azonosito.loc[db_cimviselo_azonosito['cimviselo_ID'] == cimviselo_id, 'cimviselo_nev'].values[0]}' (cimviselo_ID: {cimviselo_id})")
-            else:                     
+            else:
                 insert_df(conn, 'cimviselo_azonosito', table_cimviselo_azonosito_data)
                 cimviselo_id = cursor.execute("SELECT cimviselo_ID FROM cimviselo_azonosito WHERE cimviselo_nev = ?", (cimviselo_tocheck,)).fetchone()[0]
                 print(f"Új címviselő név hozzáadva: '{cimviselo_tocheck}') (cimviselo_ID: {cimviselo_id})")
-                        
 
+            # -----------------------------------------------------------------
+            # 4c. ALAPADAT ÉS CÍMVISELŐ RÉSZLETEK ÍRÁSA
+            # Az alapadat táblába kerül a park általános éves összefoglalója;
+            # a cimviselo táblába a szervezet összetételére és foglalkoztatottjaira
+            # vonatkozó adatok. Mindkettőhöz hozzárendeljük a megfelelő azonosítókat.
+            # -----------------------------------------------------------------
             table_alapadat_data['park_ID'] = park_id
             table_alapadat_data['cimviselo_ID'] = cimviselo_id
             insert_df(conn, 'alapadat', table_alapadat_data)
@@ -439,6 +473,12 @@ def transform_write_to_db(db, all_data, column_mapping):
             table_cimviselo_data['cimviselo_ID'] = cimviselo_id
             insert_df(conn, 'cimviselo', table_cimviselo_data)
 
+            # -----------------------------------------------------------------
+            # 4d. EGYSZERŰ PARK_ID-ALAPÚ TÁBLÁK ÍRÁSA
+            # Ezek a táblák közvetlenül a park_ID-hoz kötődnek, külön
+            # segédtáblás (lookup) logika nélkül. Minden táblához hozzáfűzzük
+            # a park_ID oszlopot, majd egyszerre írjuk be az adatokat.
+            # -----------------------------------------------------------------
             tables = {
                 'management': table_management_data,
                 'vallalkozasok': table_vallalkozasok_data,
@@ -453,11 +493,36 @@ def transform_write_to_db(db, all_data, column_mapping):
                 df['park_ID'] = park_id
                 insert_df(conn, name, df)
 
+            # -----------------------------------------------------------------
+            # 4e. INFRASTRUKTÚRA FAJTAJEGYZÉK FRISSÍTÉSE ÉS RÉSZLETEK ÍRÁSA
+            # Az infra_fajta tábla egy normalizált fajtajegyzék (típus + név párok).
+            # Először meghatározzuk, mely (infra_tipus, infra_nev) kombinációk
+            # újak a beérkező adatban, és csak ezeket szúrjuk be. Ezután az
+            # aktuális fajtajegyzékkel összekapcsoljuk a részletes adatokat, és
+            # csak a kitöltött sorokat (ellátott_ter és állapot nem üres) mentjük.
+            # -----------------------------------------------------------------
+            infra_fajta_df = pd.read_sql_query("SELECT * FROM infra_fajta;", conn)
 
-    #az infra_fajta adatokat csak első alkalommal kell bevinni
-            #table_infra_fajta_data.to_sql('infra_fajta', conn, if_exists='append', index=False)
+            # Bal oldali összekapcsolással megkeressük, mely (infra_tipus, infra_nev) párok
+            # szerepelnek a beérkező adatokban, de még nem léteznek az adatbázisban.
+            # Az indicator=True hozzáad egy '_merge' oszlopot, amelynek értéke:
+            #   'left_only'  – csak a beérkező adatban szerepel (új rekord)
+            #   'both'       – mindkét helyen megvan (már létezik, kihagyandó)
+            uj_infra_merge = table_infra_fajta_data.merge(
+                infra_fajta_df[['infra_tipus', 'infra_nev']],
+                on=['infra_tipus', 'infra_nev'],
+                how='left',
+                indicator=True
+            )
+            # Csak az újonnan beérkező, még nem szereplő sorokat tartjuk meg
+            uj_infra_fajta = uj_infra_merge[uj_infra_merge['_merge'] == 'left_only'][['infra_tipus', 'infra_nev']]
 
-            infra_fajta_df = pd.read_sql_query("SELECT * FROM infra_fajta;", conn)  
+            # Csak akkor írunk az adatbázisba, ha valóban van új rekord
+            if not uj_infra_fajta.empty:
+                uj_infra_fajta.to_sql('infra_fajta', conn, if_exists='append', index=False)
+                # A teljes infra_fajta táblát újra beolvassuk, hogy az újonnan
+                # kapott infra_ID értékek is elérhetők legyenek a következő lépésben
+                infra_fajta_df = pd.read_sql_query("SELECT * FROM infra_fajta;", conn)
 
             merged_infra_df = pd.merge(infra_fajta_df, table_infrastruktura_data, on=['infra_tipus', 'infra_nev'],how='left')
             final_merged_infra_df = merged_infra_df[['infra_ID','kapacitas','ellatott_ter','allapot','terv_fejlesztes_ev','terv_forras',]]
@@ -465,16 +530,40 @@ def transform_write_to_db(db, all_data, column_mapping):
             clean_infra_data_df['park_ID'] = park_id
             insert_df(conn, 'infrastruktura', clean_infra_data_df)
 
-    #a szolg_fajta adatokat csak első alkalommal kell bevinni
-            #table_szolg_fajta_data.to_sql('szolg_fajta', conn, if_exists='append', index=False)
-
+            # -----------------------------------------------------------------
+            # 4f. SZOLGÁLTATÁS FAJTAJEGYZÉK FRISSÍTÉSE ÉS RÉSZLETEK ÍRÁSA
+            # A szolg_fajta tábla az infra_fajta-hoz teljesen analóg logikával
+            # működik: (szolg_tipus, szolg_nev) párok alkotják a fajtajegyzéket.
+            # Csak a kitöltött sorokat (szolgaltato_fajta nem üres) mentjük.
+            # -----------------------------------------------------------------
             szolg_fajta_df = pd.read_sql_query("SELECT * FROM szolg_fajta;", conn)
+
+            # Bal oldali összekapcsolással megkeressük, mely (szolg_tipus, szolg_nev) párok
+            # szerepelnek a beérkező adatokban, de még nem léteznek az adatbázisban.
+            # Az indicator=True hozzáad egy '_merge' oszlopot, amelynek értéke:
+            #   'left_only'  – csak a beérkező adatban szerepel (új rekord)
+            #   'both'       – mindkét helyen megvan (már létezik, kihagyandó)
+            uj_szolg_merge = table_szolg_fajta_data.merge(
+                szolg_fajta_df[['szolg_tipus', 'szolg_nev']],
+                on=['szolg_tipus', 'szolg_nev'],
+                how='left',
+                indicator=True
+            )
+            # Csak az újonnan beérkező, még nem szereplő sorokat tartjuk meg
+            uj_szolg_fajta = uj_szolg_merge[uj_szolg_merge['_merge'] == 'left_only'][['szolg_tipus', 'szolg_nev']]
+
+            # Csak akkor írunk az adatbázisba, ha valóban van új rekord
+            if not uj_szolg_fajta.empty:
+                uj_szolg_fajta.to_sql('szolg_fajta', conn, if_exists='append', index=False)
+                # A teljes szolg_fajta táblát újra beolvassuk, hogy az újonnan
+                # kapott szolg_ID értékek is elérhetők legyenek a következő lépésben
+                szolg_fajta_df = pd.read_sql_query("SELECT * FROM szolg_fajta;", conn)
 
             merged_szolg_df = pd.merge(szolg_fajta_df, table_szolgaltatasok_data, on=['szolg_tipus', 'szolg_nev'],how='left')
             final_merged_szolg_df = merged_szolg_df[['szolg_ID','szolg_tartalom','szolgaltato_fajta','szolgaltato_nev','szolg_kezdet',]]
             clean_szolg_data_df = final_merged_szolg_df.dropna(subset=['szolgaltato_fajta']).copy()
             clean_szolg_data_df['park_ID'] = park_id
-            insert_df(conn, 'szolgaltatas', clean_szolg_data_df)   
+            insert_df(conn, 'szolgaltatas', clean_szolg_data_df)
     except Exception as e:
         print(f"Hiba történt az adatbázis művelet során: {e}")
         raise

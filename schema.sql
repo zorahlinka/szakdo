@@ -53,7 +53,8 @@ CREATE TABLE "infra_fajta" (
 	"infra_ID"	INTEGER NOT NULL,
 	"infra_tipus"	TEXT NOT NULL,
 	"infra_nev"	TEXT NOT NULL,
-	PRIMARY KEY("infra_ID")
+	PRIMARY KEY("infra_ID"),
+	UNIQUE("infra_tipus", "infra_nev")
 );
 CREATE TABLE "infrastruktura" (
 	"park_ID"	INTEGER,
@@ -129,7 +130,8 @@ CREATE TABLE "szolg_fajta" (
 	"szolg_ID"	INTEGER,
 	"szolg_tipus"	TEXT,
 	"szolg_nev"	TEXT,
-	PRIMARY KEY("szolg_ID")
+	PRIMARY KEY("szolg_ID"),
+	UNIQUE("szolg_tipus", "szolg_nev")
 );
 CREATE TABLE "szolgaltatas" (
 	"park_ID"	INTEGER,
