@@ -1,15 +1,4 @@
-A riportok alapját képező egyesített nézet
-CREATE VIEW park_base AS
-SELECT 
-    p.park_ID,
-    p.park_nev,
-    a.park_regio,
-    a.park_varmegye,
-    a.alapadat_ev,
-    a.park_email
-FROM park_azonosito p
-LEFT JOIN alapadat_latest a ON p.park_ID = a.park_ID;
-
+-- A riportok alapját képező egyesített nézet
 
 -- 1. Vállalkozások legfrissebb adatai
 CREATE VIEW vallalkozasok_latest AS
@@ -97,4 +86,14 @@ SELECT * FROM (
     ) AS rn FROM szolgaltatas
 ) WHERE rn = 1;
 
-
+-- 10. Park alaplap (alapadat_latest-re épül, ezért utoljára hozzuk létre)
+CREATE VIEW park_base AS
+SELECT 
+    p.park_ID,
+    p.park_nev,
+    a.park_regio,
+    a.park_varmegye,
+    a.alapadat_ev,
+    a.park_email
+FROM park_azonosito p
+LEFT JOIN alapadat_latest a ON p.park_ID = a.park_ID;

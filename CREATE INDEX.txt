@@ -35,22 +35,22 @@ ON szolgaltatas (park_ID, szolg_ID, datum DESC);
 
 
 
-CREATE INDEX idx_<tabla>_latest
-ON <tabla>(
-    <partition_oszlop_1>,
-    <partition_oszlop_2>,
-    ...
-    datum DESC
-);
+-- CREATE INDEX idx_<tabla>_latest
+-- ON <tabla>(
+--     <partition_oszlop_1>,
+--     <partition_oszlop_2>,
+--     ...
+--     datum DESC
+-- );
 
-ha van én mező
-CREATE INDEX idx_<tabla>_latest
-ON <tabla>(park_ID, <ev_oszlop>, datum DESC);
+-- ha van év mező
+-- CREATE INDEX idx_<tabla>_latest
+-- ON <tabla>(park_ID, <ev_oszlop>, datum DESC);
 
-ha több dimenzió van
-CREATE INDEX idx_<tabla>_latest
-ON <tabla>(park_ID, <dim1>, <dim2>, datum DESC);
+-- ha több dimenzió van
+-- CREATE INDEX idx_<tabla>_latest
+-- ON <tabla>(park_ID, <dim1>, <dim2>, datum DESC);
 
-ha nincs én (entity)
-CREATE INDEX idx_<tabla>_latest
-ON <tabla>(park_ID, <entity_ID>, datum DESC);
+-- ha nincs év (entity)
+-- CREATE INDEX idx_<tabla>_latest
+-- ON <tabla>(park_ID, <entity_ID>, datum DESC);

@@ -40,7 +40,7 @@ CREATE TABLE "cimviselo" (
 	"osszetetel_egyeb"	REAL,
 	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY("cimviselo_ID","datum"),
-	FOREIGN KEY("cimviselo_ID") REFERENCES "cimviselo_azonosito"("cimviselo_ID"),
+	FOREIGN KEY("cimviselo_ID") REFERENCES "cimviselo_azonosito"("cimviselo_ID")
 );
 CREATE TABLE "helyrajzi_szam" (
 	"park_ID"	INTEGER,

@@ -482,6 +482,40 @@ def transform_write_to_db(db, all_data, column_mapping):
         conn.close()
 
 
+def init_db(db_path):
+    """Létrehozza az adatbázist a séma, nézetek és indexek alapján.
+
+    Az SQL utasítások három fájlból kerülnek beolvasásra, amelyek a
+    szkripttel azonos könyvtárban találhatók:
+      - schema.sql          : táblák definíciói
+      - CREATE VIEW latest.txt : legfrissebb adat nézetek
+      - CREATE INDEX.txt    : teljesítményt javító indexek
+    """
+    # A szkript könyvtára – innen keressük a séma fájlokat
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # Beolvasandó SQL fájlok sorrendben (a nézetek a tábláktól függenek)
+    sql_fajlok = [
+        os.path.join(base_dir, 'schema.sql'),
+        os.path.join(base_dir, 'CREATE VIEW latest.txt'),
+        os.path.join(base_dir, 'CREATE INDEX.txt'),
+    ]
+
+    sql_reszek = []
+    for fajl in sql_fajlok:
+        with open(fajl, 'r', encoding='utf-8') as f:
+            sql_reszek.append(f.read())
+
+    # Az összes SQL utasítást egyetlen szöveggé fűzzük össze
+    combined_sql = '\n'.join(sql_reszek)
+
+    # Adatbázis létrehozása és az összes utasítás végrehajtása
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(combined_sql)
+
+    print(f"Az adatbázis sikeresen létrehozva: '{db_path}'")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Ipari Park adatok importálása .ods fájlból SQLite adatbázisba.'
@@ -505,8 +539,16 @@ def main():
         print(f"Hiba: A megadott bemeneti fájl nem található: '{excel_file}'")
         return
     if not os.path.isfile(db):
-        print(f"Hiba: A megadott adatbázis fájl nem található: '{db}'")
-        return
+        # Az adatbázis fájl nem létezik – megkérdezzük a felhasználót
+        valasz = input(
+            f"Az adatbázis fájl nem található: '{db}'.\n"
+            "Szeretne új adatbázist létrehozni? (i/n): "
+        )
+        if valasz.strip().lower() == 'i':
+            init_db(db)
+        else:
+            print("Adatbázis létrehozása megszakítva. Kilépés.")
+            return
 
     all_data = read_excel(excel_file, sheets_to_read)
     if all_data is None:
