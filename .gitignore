@@ -3,3 +3,5 @@ IP
 *.pdf
 *.db
 __pycache__/
+test_data/
+.venv/

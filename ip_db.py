@@ -1,3 +1,5 @@
+import argparse
+import os
 import pandas as pd
 import sqlite3
 import datetime
@@ -481,13 +483,37 @@ def transform_write_to_db(db, all_data, column_mapping):
 
 
 def main():
-    excel_file = '/home/peti/Dokumentumok/gdf/kerdoiv/test_data/zalaegerszegi_ip_2023.ods'
-    db = '/home/peti/Dokumentumok/gdf/adatbazis/IP'
+    parser = argparse.ArgumentParser(
+        description='Ipari Park adatok importálása .ods fájlból SQLite adatbázisba.'
+    )
+    parser.add_argument(
+        '--input',
+        required=True,
+        help='Az importálandó Excel (.ods) fájl elérési útja.'
+    )
+    parser.add_argument(
+        '--db',
+        required=True,
+        help='A cél SQLite adatbázis fájl elérési útja.'
+    )
+    args = parser.parse_args()
+
+    excel_file = args.input
+    db = args.db
+
+    if not os.path.isfile(excel_file):
+        print(f"Hiba: A megadott bemeneti fájl nem található: '{excel_file}'")
+        return
+    if not os.path.isfile(db):
+        print(f"Hiba: A megadott adatbázis fájl nem található: '{db}'")
+        return
 
     all_data = read_excel(excel_file, sheets_to_read)
     if all_data is None:
         print("A beolvasás sikertelen, kilépés.")
         return
+    else:
+        print("Adat fájl sikeresen beolvasva.")
 
     validation_errors = data_validation(all_data)
     if validation_errors:
@@ -496,9 +522,11 @@ def main():
             print(error)
         print(f"Összes hiba: {len(validation_errors)}")
         return
+    else:
+        print("Adatellenőrzés sikeres.")
 
     transform_write_to_db(db, all_data, column_mapping)
-    print("Adatbetöltés vége.")
+    print("Adatbetöltés kész.")
 
 if __name__ == "__main__":
     main()
