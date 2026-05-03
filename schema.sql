@@ -1,11 +1,11 @@
 CREATE TABLE "EU_tamogatas" (
-	"park_ID"	INTEGER,
-	"tamogatas_ev"	INTEGER,
+	"park_ID"	INTEGER NOT NULL,
+	"tamogatas_ev"	INTEGER DEFAULT (CAST(strftime('%Y','now','-1 year') AS INTEGER)),
 	"op"	TEXT,
 	"tamogatas_tartalom"	TEXT,
 	"intenzitas"	REAL,
 	"EU_osszkoltseg"	REAL,
-	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
+	"datum"	INTEGER DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY("park_ID","tamogatas_ev","tamogatas_tartalom","datum"),
 	FOREIGN KEY("park_ID") REFERENCES "park_azonosito"("park_ID")
 );
@@ -24,7 +24,7 @@ CREATE TABLE "alapadat" (
 	"park_honlap"	TEXT,
 	"cimviselo_ID"	INTEGER,
 	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
-	"alapadat_ev"	INTEGER,
+	"alapadat_ev"	INTEGER DEFAULT (CAST(strftime('%Y','now','-1 year') AS INTEGER)),
 	PRIMARY KEY("park_ID","datum"),
 	FOREIGN KEY("cimviselo_ID") REFERENCES "cimviselo_azonosito"("cimviselo_ID"),
 	FOREIGN KEY("park_ID") REFERENCES "park_azonosito"("park_ID")
@@ -71,7 +71,7 @@ CREATE TABLE "infrastruktura" (
 );
 CREATE TABLE "infrastrukturafejlesztes" (
 	"park_ID"	INTEGER,
-	"felhasznalas_ev"	INTEGER,
+	"felhasznalas_ev"	INTEGER DEFAULT (CAST(strftime('%Y','now','-1 year') AS INTEGER)),
 	"sajat_forras"	REAL,
 	"allami_forras"	REAL,
 	"onkormanyzati_forras"	REAL,
@@ -102,7 +102,7 @@ CREATE TABLE "kapcsolatok" (
 	"oktatas_felso"	TEXT,
 	"kutatointezet"	TEXT,
 	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
-	"kapcsolatok_ev"	INTEGER,
+	"kapcsolatok_ev"	INTEGER DEFAULT (CAST(strftime('%Y','now','-1 year') AS INTEGER)),
 	PRIMARY KEY("park_ID","datum"),
 	FOREIGN KEY("park_ID") REFERENCES "park_azonosito"("park_ID")
 );
@@ -157,13 +157,13 @@ CREATE TABLE "terulet" (
 	"berbeadott_ter_arany"	REAL,
 	"eladott_ter_arany"	REAL,
 	"datum"	TEXT DEFAULT CURRENT_TIMESTAMP,
-	"terulet_ev"	INTEGER,
+	"terulet_ev"	INTEGER DEFAULT (CAST(strftime('%Y','now','-1 year') AS INTEGER)),
 	PRIMARY KEY("datum","park_ID"),
 	FOREIGN KEY("park_ID") REFERENCES "park_azonosito"("park_ID")
 );
 CREATE TABLE "vallalkozasok" (
 	"park_ID"	INTEGER,
-	"vallalkozasok_ev"	INTEGER,
+	"vallalkozasok_ev"	INTEGER DEFAULT (CAST(strftime('%Y','now','-1 year') AS INTEGER)),
 	"vallalkozasok_terulet"	REAL,
 	"vallalkozasok_szama"	INTEGER,
 	"vallalkozasok_foglalkoztatott"	INTEGER,

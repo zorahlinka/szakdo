@@ -29,19 +29,17 @@ def get_agg_config():
 
 # 2. SEGÉDFÜGGVÉNYEK
 
-def safe_div(numerator, denominator):
-    """
-    Safe division that handles division by zero.
-    Returns percentage (multiplied by 100).
-    """
+"""def safe_div(numerator, denominator):
+    
     with np.errstate(divide='ignore', invalid='ignore'):
         result = np.true_divide(numerator, denominator) * 100
 
     # Replace inf and nan with 0
     result = np.where(np.isfinite(result), result, 0)
     return pd.Series(result).round(2)
+"""
 
-def round_by_structure(df):
+def round(df):
     df = df.copy()
     for col in df.columns:
         df[col] = df[col].round(2)
@@ -123,6 +121,7 @@ def load_data(conn):
 # 4. REPORT FÜGGVÉNYEK
 
 def report_emails(df, cfg, agg_map=None, mgmt_df=None):
+    df = df[df['aktiv'] == 1].copy()
     f_df = apply_filters(df, filter_col=cfg.get("filter_col"), filter_values=cfg.get("filter_values"))
     
     if mgmt_df is not None:
@@ -142,6 +141,7 @@ def report_emails(df, cfg, agg_map=None, mgmt_df=None):
     
 
 def report_missing(df, cfg, agg_map=None, mgmt_df=None):
+    df = df[df['aktiv'] == 1].copy()
     year = cfg["year"]
     filtered_df = apply_filters(df, years=None, filter_col=cfg.get("filter_col"), filter_values=cfg.get("filter_values"))
 
@@ -236,7 +236,7 @@ def report_pivot(df, cfg, agg_map_all, mgmt_df=None):
             pivot[f"{metric}_Változás_%_per_park"] = pivot[f"{metric}_Változás_%_per_park"].fillna(0).round(2)
             
           
-    return round_by_structure(pivot)
+    return round(pivot)
 
 def report_totals(df, cfg, agg_map_all, mgmt_df=None):
     agg_dict = agg_map_all[cfg["agg"]]
@@ -294,7 +294,7 @@ def report_totals(df, cfg, agg_map_all, mgmt_df=None):
     
     #safe_div() expects Series with the same length, but you're passing a Series and a column from a DataFrame with different indices.
     
-    return round_by_structure(out)
+    return round(out)
            
 
 # 5. MAIN
@@ -308,13 +308,14 @@ def main():
         mgmt_df = pd.read_sql("SELECT park_ID, management_email FROM management_latest", conn)
         
         mgmt_df = (mgmt_df.groupby("park_ID")["management_email"].apply(lambda x: "; ".join(sorted(x.dropna().unique()))).reset_index())
-
-
+    print(df[df['park_ID'] == 2]['arbevetel'])
+    
+    #print(f"Mentve: {file_name}")
     conn.close()
 
     reporting = [
         {"func": report_totals, "cfg": {"type": "totals", "agg": "small", "years": [2021, 2022, 2023], "filter_col": "park_regio", "filter_values": ["Közép-Dunántúl"]}},
-        {"func": report_pivot, "cfg": {"type": "novekedes", "group_col": "park_regio", "agg": "small", "years": [2023]}},
+        {"func": report_pivot, "cfg": {"type": "novekedes", "group_col": "park_regio", "agg": "small","metrics": ["EU_osszkoltseg", "arbevetel", "exportarany"],"years": [2021, 2022]}},
         {"func": report_emails, "cfg": {"type": "emails", "filter_col": "park_regio", "filter_values": ["Közép-Dunántúl"]}},
         {"func": report_missing, "cfg": {"type": "missing", "year": 2024, "filter_col": "park_regio", "filter_values": ["Közép-Dunántúl"]}},
     ]
@@ -330,3 +331,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
