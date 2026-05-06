@@ -332,15 +332,12 @@ def report_missing(df, cfg, agg_map=None, mgmt_df=None):
 
     return {"hianyzo": consolidated}
 
-
+# Területi bontású pivot-tábla (mutatók vagy évek szerint) éves összehasonlítással és park-szintű átlagokkal
 def report_pivot(df, cfg, agg_map_all, mgmt_df=None):
-    """Területi (vagy egyéb csoportosítási) bontású pivot-táblát készít,
-    éves összehasonlítással és park-szintű átlagokkal.
-
+    """
     A kimenet oszlopai:
     - <metrika>_<év>          : az aggregált érték az adott évre és csoportra
-    - <metrika>_<év>_Per_Park : egy parkra jutó átlag (sum típusnál osztás,
-                                mean típusnál megegyezik az aggregált értékkel)
+    - <metrika>_<év>_Per_Park : egy parkra jutó átlag
     - <metrika>_Változás_per_park   : abszolút változás az első és utolsó év között
     - <metrika>_Változás_%_per_park : relatív változás százalékban
 
@@ -350,8 +347,8 @@ def report_pivot(df, cfg, agg_map_all, mgmt_df=None):
             - 'group_col': a csoportosítási oszlop neve (pl. 'park_regio')
             - 'agg': aggregációs készlet neve ('small' vagy 'full')
           opcionális kulcsok:
-            - 'metric': egyetlen metrika neve (str)
-            - 'metrics': több metrika listája
+            - 'metric': egyetlen mutató neve (str)
+            - 'metrics': több mutató listája
             - 'years': szűrendő évek listája
             - 'filter_values': a group_col szerinti szűrési értékek
         agg_map_all (dict): Az aggregációs konfigurációk szótára
@@ -370,17 +367,14 @@ def report_pivot(df, cfg, agg_map_all, mgmt_df=None):
     # Az év oszlop egész számmá alakítása (pivot oszlopnevekhez szükséges)
     df['alapadat_ev'] = df['alapadat_ev'].astype(int)
 
-    # Metrikák meghatározása: egyetlen, több, vagy az összes elérhető metrika
+    # Metrikák meghatározása: egyetlen, több (listában), vagy az összes elérhető metrika
     if cfg.get("metric"):
-        # Egyetlen metrika megadva
         metrics_to_use = [cfg.get("metric")]
     elif cfg.get("metrics"):
-        # Több metrika megadva (listát biztosítunk)
         metrics_to_use = cfg.get("metrics")
         if not isinstance(metrics_to_use, list):
             metrics_to_use = [metrics_to_use]
     else:
-        # Ha nincs megadva, az aggregációs konfig összes metrikája szerepel
         metrics_to_use = list(agg_dict.keys())
 
     # Csak az aggregációs konfigban szereplő metrikák maradnak
@@ -395,10 +389,10 @@ def report_pivot(df, cfg, agg_map_all, mgmt_df=None):
         fill_value=0
     )
 
-    # A többszintű oszlopneveket egyszintű '<metrika>_<év>' alakra hozzuk
+    # A többszintű oszlopneveket egyszintű '<metric>_<year>' alakra hozzuk
     pivot.columns = [f"{metric}_{year}" for metric, year in pivot.columns]
 
-    # Numerikus típusra kényszerítés (esetleges vegyes típusok kezelésére)
+    # Numerikus típusra kényszerítés
     for col in pivot.columns:
         pivot[col] = pd.to_numeric(pivot[col], errors='coerce')
 
@@ -408,8 +402,7 @@ def report_pivot(df, cfg, agg_map_all, mgmt_df=None):
     # Egyedi parkok száma csoportonként – az egy parkra jutó átlag számításához
     park_counts = df.groupby(cfg["group_col"])['park_ID'].nunique()
 
-    # A park_counts indexét igazítjuk a pivot indexéhez, hogy az osztás
-    # index-eltérés nélkül működjön (hiányzó csoportokhoz 0 kerül)
+    # A park_counts indexét igazítjuk a pivot indexéhez, hogy az osztás működjön (hiányzó csoportokhoz 0 kerül)
     park_counts = park_counts.reindex(pivot.index).fillna(0)
 
     for metric in agg_dict_filtered:
@@ -423,7 +416,7 @@ def report_pivot(df, cfg, agg_map_all, mgmt_df=None):
 
             if agg_type == "sum":
                 # Összeg típusnál az értéket elosztjuk a parkok számával
-                pivot[per_park_col] = (pivot[col_name] / park_counts) if park_counts.sum() != 0 else 0
+                pivot[per_park_col] = (pivot[col_name] / park_counts) if park_counts.sum() != 0 else 0 
             elif agg_type == "mean":
                 # Átlag típusnál az aggregált érték már önmagában átlag
                 pivot[per_park_col] = pivot[col_name]
@@ -432,7 +425,7 @@ def report_pivot(df, cfg, agg_map_all, mgmt_df=None):
 
     # Változás számítása csak akkor, ha legalább 2 év van
     if len(years) >= 2:
-        y1, y2 = years[0], years[-1]  # első és utolsó vizsgált év
+        y1, y2 = years[0], years[-1]
         for metric in agg_dict_filtered:
 
             per_park_y1 = f"{metric}_{y1}_Per_Park"
@@ -441,26 +434,23 @@ def report_pivot(df, cfg, agg_map_all, mgmt_df=None):
             # Abszolút változás: utolsó év − első év (park-szintű átlagokon)
             pivot[f"{metric}_Változás_per_park"] = pivot[per_park_y2] - pivot[per_park_y1]
 
-            # Relatív változás százalékban; 0-val való osztás elkerülése NaN-ra cseréléssel,
-            # majd a NaN-ok 0-ra állítása (.fillna)
-            # Megjegyzés: .values használata elkerüli az index-eltérésből adódó hibát
-            pivot[f"{metric}_Változás_%_per_park"] = pivot[f"{metric}_Változás_per_park"].values / pivot[per_park_y1].replace(0, np.nan).values * 100
+            # Relatív változás százalékban
+            pivot[f"{metric}_Változás_%_per_park"] = pivot[f"{metric}_Változás_per_park"] / pivot[per_park_y1].replace(0, np.nan) * 100
             pivot[f"{metric}_Változás_%_per_park"] = pivot[f"{metric}_Változás_%_per_park"].fillna(0).round(2)
 
     return round(pivot)
 
+# Éves összesítő tábla az összes park adataibol, mutató alapján, parkszintu atlagokkal
 def report_totals(df, cfg, agg_map_all, mgmt_df=None):
-    """Eves osszesito tablat keszit az osszes park adataibol, parkszintu atlagokkal
-    es novekedesi mutatokkal.
+    """
+    A kimenet sorai a mutatók, oszlopai az évek. Minden évhez két oszlop kerül:
+    - <ev>        : az aggregált összeértékek (sum) vagy átlag (mean)
+    - <ev> Átlag  : egy parkra jutó átlag (sum típusnál osztás a parkszámmal,
+                   mean típusnál megegyezik az aggregált értékkel)
 
-    A kimenet sorai a metrikak, oszlopai az evek. Minden evhez ket oszlop kerul:
-    - <ev>        : az aggregalt osszeertek (sum) vagy atlag (mean)
-    - <ev> Atlag  : egy parkra juto atlag (sum tipusnal osztas a parkszammal,
-                   mean tipusnal megegyezik az aggregalt ertekkel)
-
-    Ha legalabb ket ev szerepel, ket tovabbi oszlop is keletkezik:
-    - 'Novekedes'     : abszolut valtozas az elso es utolso ev atlagai kozott
-    - 'Novekedes (%)' : relativ valtozas szazalekban
+    Ha legalább két év szerepel, két további oszlop is keletkezik:
+    - 'Növekedes'     : abszolút változás az első es utolsó év átlagai között
+    - 'Növekedes (%)' : relativ változás százalékban az első év átlagához képest
 
     Args:
         df (pd.DataFrame): A teljes adatkeszlet.
@@ -478,16 +468,16 @@ def report_totals(df, cfg, agg_map_all, mgmt_df=None):
         pd.DataFrame: A kerekitett osszesito tabla
             (sorok = metrikak, oszlopok = evek + atlagok + novekedes).
     """
-    # A konfiguracionak megadott aggregacios keszlet kivalasztasa
+    # A konfigurációban megadott aggregációs készlet kiválasztása
     agg_dict = agg_map_all[cfg["agg"]]
 
-    # Szures alkalmazasa (evek, terulet stb.)
+    # Szűrés alkalmazása (évek, terület stb.)
     work_df = apply_filters(df, years=cfg.get("years"), filter_col=cfg.get("filter_col"), filter_values=cfg.get("filter_values"))
 
-    # Az ev oszlop egesz szamma alakitasa
+    # Az év oszlop egész számmá alakitása(pivot oszlopnevekhez szükséges)
     work_df['alapadat_ev'] = work_df['alapadat_ev'].astype(int)
 
-    # Az evek listaja: konfiguracionak, vagy ha nincs megadva, az adatbol
+    # Az évek listája: konfigurációban, vagy ha nincs megadva, az adatból kinyerve
     if cfg.get("years"):
         years = sorted(cfg.get("years"))
     else:
@@ -495,17 +485,16 @@ def report_totals(df, cfg, agg_map_all, mgmt_df=None):
 
     years = [int(y) for y in years]
 
-    # Egyedi parkok szama evenként - az atlagszamitashoz szukseges
+    # Egyedi parkok szama évenként - az átlagszámításhoz szükséges
     counts = work_df.groupby('alapadat_ev')['park_ID'].nunique()
 
-    # Eves aggregalas az osszes metrikara, majd numerikus tipusra kenyszerites
-    # es transzponalis (sorok = metrikak, oszlopok = evek)
+    # Éves aggregáció az összes mutatóra, majd numerikus típusra kényszerítés és transzponálás (sorok = mutatók, oszlopok = évek)
     all_parks_agg = work_df.groupby('alapadat_ev').agg(agg_dict)
     all_parks_agg = all_parks_agg.apply(pd.to_numeric, errors='coerce').transpose()
 
     out = all_parks_agg
 
-    # Parkszintu atlag hozzaadasa minden evhez
+    # Parkszintű átlag hozzáadása minden évhez
     for y in all_parks_agg.columns:
         cnt = counts.get(y, 0)  # az adott evi parkszam
 
@@ -515,34 +504,26 @@ def report_totals(df, cfg, agg_map_all, mgmt_df=None):
             avg_col_name = f"{y} Átlag"
 
             if agg_type == "sum":
-                # Osszeg tipusnal az osszeget elosztjuk a parkok szamaval
+                # Összeg típusnál az összeget elosztjuk a parkok számával
                 out.loc[metric, avg_col_name] = out.loc[metric, col_name] / cnt if cnt != 0 else 0
             elif agg_type == "mean":
-                # Atlag tipusnal az aggregalt ertek mar onmagaban atlag
+                # Átlag típusnál az aggregált érték marad önmagában átlag
                 out.loc[metric, avg_col_name] = out.loc[metric, col_name]
             else:
                 out.loc[metric, avg_col_name] = np.nan
 
-    # Novekedesi mutatók szamitasa, ha legalabb ket ev van
+    # Növekedési mutatók számítása, ha legalább két év van
     if len(years) >= 2:
         first_year_col = f"{int(years[0])} Átlag"
         last_year_col = f"{int(years[-1])} Átlag"
 
-        # Abszolut novekedes: utolso ev atlaga - elso ev atlaga
+        # Abszolút növekedés: utolsó év átlaga - első év átlaga
         out["Növekedés"] = out[last_year_col] - out[first_year_col]
 
-        # Relativ novekedes szazalekban; a 0 osztot NaN-ra csereljuk az osztas elott,
-        # az eredmenyben keletkező NaN-okat 0-ra allitjuk vissza (.fillna)
-        # Megjegyzes: .values hasznalata elkeruli az index-elteresbol adodo hibat
-        out["Növekedés (%)"] = (out["Növekedés"].values / out[first_year_col].replace(0, np.nan).values * 100)
-        out["Növekedés (%)"] = out["Növekedés (%)"].fillna(0).round(2)
-
-    #out["Növekedés"] = out[f"{int(years[-1])} Átlag"] - out[f"{int(years[0])} Átlag"]
-    #out["Növekedés (%)"] = ((out[f"{int(years[-1])} Átlag"] * 100 / out[f"{int(years[0])} Átlag"].replace(0, np.nan)) - 100).fillna(0)
-    #out["Növekedés (%%)"] = (out["Növekedés"] * 100 / out[f"{int(years[0])} Átlag"].replace(0, np.nan)).fillna(0)
-
-    #safe_div() expects Series with the same length, but you're passing a Series and a column from a DataFrame with different indices.
-
+        # Relativ növekedés abszolút értékben és százalekban
+        out["Növekedés (%)"] = (out["Növekedés"] / out[first_year_col].replace(0, np.nan) * 100)
+        out["Növekedés (%)"] = out["Növekedés (%)"].fillna(0)
+    
     return round(out)
 
 
