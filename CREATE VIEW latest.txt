@@ -91,6 +91,7 @@ CREATE VIEW park_base AS
 SELECT 
     p.park_ID,
     p.park_nev,
+    p.aktiv,
     a.park_regio,
     a.park_varmegye,
     a.alapadat_ev,

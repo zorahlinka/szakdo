@@ -32,20 +32,11 @@ def get_agg_config():
 
 # 2. SEGÉDFÜGGVÉNYEK
 
-"""def safe_div(numerator, denominator):
-
-    with np.errstate(divide='ignore', invalid='ignore'):
-        result = np.true_divide(numerator, denominator) * 100
-
-    # Replace inf and nan with 0
-    result = np.where(np.isfinite(result), result, 0)
-    return pd.Series(result).round(2)
-"""
-
 def round(df):
     df = df.copy()
     for col in df.columns:
-        df[col] = df[col].round(2)
+        if pd.api.types.is_numeric_dtype(df[col]):
+            df[col] = df[col].round(2)
     return df
 
 def apply_filters(df, years=None, filter_col=None, filter_values=None):
@@ -60,62 +51,33 @@ def apply_filters(df, years=None, filter_col=None, filter_values=None):
 def log(msg):
     print(f"[REPORT] {msg}")
 
+#Fájlnév generálás a konfig alapján (type, metric, year/years, timestamp) 
 def generate_report_name(cfg):
-    """Egyedi riportfájl-nevet generál a konfiguráció alapján.
-
-    A név felépítése: <típus>[_<metrika>][_<év(ek)>]_<dátum_idő>
-    - típus: a cfg["type"] értéke (pl. "totals", "emails")
-    - metrika: ha cfg["metric"] meg van adva, hozzáfűzi
-    - év: ha cfg["year"] meg van adva, azt fűzi hozzá;
-           ha cfg["years"] van megadva, a tartomány első és utolsó évét (pl. "2021-2023")
-    - dátum_idő: az aktuális dátum és idő YYYYMMDD_HHMM formátumban
-
-    Args:
-        cfg (dict): A riport konfigurációs szótára.
-
-    Returns:
-        str: Az egyedi, kisbetűs fájlnév (kiterjesztés nélkül).
-    """
-    # Az első rész mindig a riport típusa
+    # Riport típusa
     parts = [cfg.get("type", "report")]
 
-    # Ha egyetlen metrika van megadva, azt is belefoglaljuk a névbe
+    # Hozzáadja a mutatót a névhez, ha csak egy van
     if "metric" in cfg:
         parts.append(str(cfg["metric"]))
 
-    # Egyetlen év esetén azt adjuk hozzá, több év esetén a tartomány határait
+    # Egyetlen év esetén azt adjuk hozzá, több év esetén első, utolsó
     if "year" in cfg:
         parts.append(str(cfg["year"]))
     elif "years" in cfg:
         parts.append(f"{min(cfg['years'])}-{max(cfg['years'])}")
 
-    # Az összes részt aláhúzással fűzzük össze, szóközöket cseréljük, kisbetűsítünk
+    # Összefűzés és timestamp
     base_name = "_".join(parts).replace(" ", "_").lower()
-
-    # Az aktuális időbélyeget a végére fűzzük az egyediség garantálása érdekében
+   
     return f"{base_name}_{datetime.now().strftime('%Y%m%d_%H%M')}"
 
+#Jelentés exportálása ODS fájlba (egyetlen DataFrame vagy több lap - dict)
 def export_to_ods(result, name):
-    """A riport eredményét ODS (OpenDocument Spreadsheet) fájlba exportálja.
-
-    Az eredmény lehet egyetlen DataFrame vagy több lapot tartalmazó szótár.
-    - Ha a result dict, akkor a szótár kulcsai lesznek a munkalapok nevei.
-    - Ha a result egyetlen DataFrame, egyetlen munkalapra kerül a name alapján.
-
-    Az ODF motor az OpenDocument formátumhoz szükséges (odfpy csomag).
-    A munkalap neve maximum 31 karakter lehet (Excel/ODS korlát).
-
-    Args:
-        result (pd.DataFrame | dict): Az exportálandó adat; egy DataFrame
-            vagy {lapnév: DataFrame} szótár.
-        name (str): A kimeneti fájl neve (kiterjesztés nélkül), egyben
-            az alapértelmezett munkalapnév is.
-    """
     file_name = f"{name}.ods"
 
     with pd.ExcelWriter(file_name, engine="odf") as writer:
 
-        # Ha az eredmény szótár, minden kulcs-érték pár külön munkalapra kerül;
+        # Ha az eredmény dict, minden kulcs-érték pár külön munkalapra kerül;
         # egyébként az egész DataFrame egyetlen lapra kerül a fájlnév alapján
         if isinstance(result, dict):
             sheets = result
@@ -129,26 +91,20 @@ def export_to_ods(result, name):
 
     print(f"Mentve: {file_name}")
 
+#Riport futtatása: név generálása, riportfüggvény meghívása, eredmény mentése ODS fájlba
 def run_report(report, df, agg_config, mgmt_df=None):
-    """Egyetlen riportot hajt végre: generálja a nevet, meghívja a riportfüggvényt,
-    majd ODS fájlba menti az eredményt.
-
-    A végrehajtás lépései:
-    1. Egyedi fájlnév generálása a konfiguráció alapján.
-    2. A riportfüggvény meghívása az adatokkal és a konfigurációval.
-    3. Az eredmény ODS fájlba exportálása.
-
+    """
     Args:
-        report (dict): A riport leírója, két kötelező kulccsal:
+        report (dict): A riport meghatározása, két kötelező kulccsal:
             - "func": a riportfüggvény (pl. report_totals)
-            - "cfg":  a riport konfigurációs szótára (pl. type, years, agg)
+            - "cfg":  a riport konfig szótára (pl. type, years, agg)
         df (pd.DataFrame): A teljes, szűretlen adatkészlet.
         agg_config (dict): Az aggregációs szabályokat tartalmazó szótár
             (small / full kulcsokkal).
         mgmt_df (pd.DataFrame | None): Kezelői e-mail adatok; opcionális,
             csak az emails és missing riportoknál szükséges.
     """
-    # Egyedi fájlnév a riport típusa, metrikái és év(ei) alapján
+    # Egyedi fájlnév a riport típusa, mutatói és év(ei) alapján
     name = generate_report_name(report["cfg"])
 
     log(f"A riport futtatása: {report['cfg']['type']}")
@@ -156,7 +112,7 @@ def run_report(report, df, agg_config, mgmt_df=None):
     # A riportfüggvény meghívása; visszaad egy DataFrame-et vagy szótárt
     result = report["func"](df, report["cfg"], agg_config, mgmt_df)
 
-    # Az eredmény mentése ODS formátumban
+    # Az eredmény mentése ODS fájlba
     export_to_ods(result, name)
 
     log(f"Riport kész: {name}")
@@ -164,27 +120,8 @@ def run_report(report, df, agg_config, mgmt_df=None):
 
 # 3. ADATBETÖLTÉS
 
+# Adatbetöltés: a nézetekből egy átfogó adatkeret összeállítása park_ID és alapadat_ev mentén
 def load_data(conn):
-    """Az összes szükséges adatnézetet betölti az adatbázisból, és egyetlen
-    széles DataFrame-be egyesíti őket park és év szerinti kulcs mentén.
-
-    A betöltés menete:
-    1. Alaptábla (park_base): tartalmazza a park törzs- és metaadatait.
-    2. Kiegészítő nézetek (latest-végűek): minden nézetből csak a legfrissebb
-       sor kerül be park_ID + alapadat_ev páronként (groupby + first).
-    3. Bal oldali összekapcsolás (LEFT JOIN): a kiegészítő adatok az alaptáblához
-       kapcsolódnak; ha egy parkhoz nincs adat egy adott évből, NaN marad.
-    4. Duplikált oszlopok eltávolítása: az összekapcsoláskor keletkező '_drop'
-       végű másolat-oszlopokat eltávolítjuk.
-    5. Numerikus konverzió: az aggregációs konfigurációban szereplő összes
-       mezőt pd.to_numeric()-kel számmá alakítjuk (hibás értékek → NaN).
-
-    Args:
-        conn: Aktív SQLite adatbázis-kapcsolat.
-
-    Returns:
-        pd.DataFrame: Az egyesített, numerikusan típusozott adattábla.
-    """
     # A betöltendő nézetek listája; az első az alaptábla
     views = ["park_base", "vallalkozasok_latest", "terulet_latest", "infrastrukturafejlesztes_latest", "EU_tamogatas_latest", "kapcsolatok_latest"]
 
@@ -199,15 +136,11 @@ def load_data(conn):
         # az első sort tartjuk meg (groupby + first)
         tmp = tmp.groupby(["park_ID", "alapadat_ev"], as_index=False).first()
 
-        # Bal oldali összekapcsolás park_ID és alapadat_ev kulcsokon;
-        # az ütköző oszlopneveket '_drop' utótaggal jelöljük
+        # Bal oldali összekapcsolás park_ID és alapadat_ev mentén; duplikált oszlopok törtlése
         df = df.merge(tmp, on=["park_ID", "alapadat_ev"], how="left", validate="one_to_one", suffixes=('', '_drop'))
-
-        # Az összekapcsolás során keletkezett duplikált '_drop' oszlopok törlése
         df = df.loc[:, ~df.columns.str.contains('_drop')]
 
-    # Az aggregációs konfigurációban szereplő összes numerikus mező átalakítása;
-    # a nem értelmezhető értékek NaN-ná válnak (errors="coerce")
+    # Numerikusnak szánt oszlopok kiválasztésa és átalakítása (későbbi numerikus műveletekhez)
     numeric_cols = list(get_agg_config()["full"].keys())
     for col in numeric_cols:
         if col in df.columns:
@@ -217,27 +150,8 @@ def load_data(conn):
 
 # 4. REPORT FÜGGVÉNYEK
 
+# E-mail cím riport: egyedi e-mail címek listája és parkonkénti elérhetőségek 
 def report_emails(df, cfg, agg_map=None, mgmt_df=None):
-    """E-mail cím riportot készít az aktív ipari parkokhoz.
-
-    Két munkalapot ad vissza:
-    - "email_lista": az összes egyedi e-mail cím (park + kezelő) összesítve,
-      rendezve, duplikátumok nélkül - közvetlen levelezéslistának alkalmas.
-    - "reszletes": parkonkénti bontás (park_ID, park_nev, park_email,
-      management_email) - az egyes parkokhoz tartozó elérhetőségek áttekintéséhez.
-
-    Args:
-        df (pd.DataFrame): A teljes adatkészlet.
-        cfg (dict): Riport konfiguráció; opcionálisan tartalmazza:
-            - "filter_col": szűrési oszlop neve (pl. "park_regio")
-            - "filter_values": szűrési értékek listája (pl. ["Közép-Dunántúl"])
-        agg_map: Nincs használatban; az egységes függvényszinatúra miatt szerepel.
-        mgmt_df (pd.DataFrame | None): Kezelői e-mail adatok (park_ID,
-            management_email); ha None, kezelői e-mailek nem kerülnek a riportba.
-
-    Returns:
-        dict: {"email_lista": DataFrame, "reszletes": DataFrame}
-    """
     # Csak az aktív (aktiv == 1) parkokat vesszük figyelembe
     df = df[df['aktiv'] == 1].copy()
 
@@ -255,7 +169,6 @@ def report_emails(df, cfg, agg_map=None, mgmt_df=None):
     emails = (emails.dropna().drop_duplicates().sort_values().reset_index(drop=True))
 
     # Parkonkénti részletes nézet: azonosító, név és mindkét e-mail cím;
-    # sorok duplikálódhatnak több éves adat esetén, ezért drop_duplicates szükséges
     details = (
         f_df[["park_ID", "park_nev", "park_email", "management_email"]].drop_duplicates().reset_index(drop=True))
 
@@ -264,47 +177,18 @@ def report_emails(df, cfg, agg_map=None, mgmt_df=None):
         "reszletes": details
     }
 
-
+# Hiányzó adatok riport: aktív parkok listája, amelyeknek nincs adata a megadott évben, e-mail címekkel kiegészítve
 def report_missing(df, cfg, agg_map=None, mgmt_df=None):
-    """Azokat az aktív ipari parkokat listázza ki, amelyeknek nincs adata
-    a megadott célévhez.
-
-    A logika:
-    1. Csak az aktív parkokat veszi figyelembe.
-    2. Opcionális területi (vagy egyéb) szűrés után meghatározza az összes
-       érintett park halmazát.
-    3. Azonosítja azokat a parkokat, amelyek a célévben (cfg["year"]) egyáltalán
-       nem szerepelnek az adatokban.
-    4. A hiányzó parkokhoz hozzáfűzi a kezelői e-mail adatokat (ha elérhetők),
-       majd parkonként összesíti az elérhetőségeket.
-
-    Args:
-        df (pd.DataFrame): A teljes adatkészlet.
-        cfg (dict): Riport konfiguráció, kötelező kulcs:
-            - "year": az az év, amelyre az adatszolgáltatást ellenőrizzük (int)
-            Opcionális kulcsok:
-            - "filter_col": szűrési oszlop neve (pl. "park_regio")
-            - "filter_values": szűrési értékek listája
-        agg_map: Nincs használatban; az egységes függvényszignatúra miatt szerepel.
-        mgmt_df (pd.DataFrame | None): Kezelői e-mail adatok (park_ID,
-            management_email); ha None, a management_email oszlop NaN lesz.
-
-    Returns:
-        dict: {"hianyzo": DataFrame} - a hiányzó parkok listája park_ID,
-            park_nev, park_email és management_email oszlopokkal.
-    """
     # Csak az aktív (aktiv == 1) parkokat vesszük figyelembe
     df = df[df['aktiv'] == 1].copy()
 
     # A vizsgált célév a konfigurációból
     year = cfg["year"]
 
-    # Opcionális területi vagy egyéb szűrés alkalmazása (évre nem szűrünk,
-    # mert az összes évet figyelembe kell venni a hiányok meghatározásához)
+    # Opcionális területi vagy egyéb szűrés alkalmazása
     filtered_df = apply_filters(df, years=None, filter_col=cfg.get("filter_col"), filter_values=cfg.get("filter_values"))
 
-    # Az összes park–év kombináció megőrzése (szándékosan nem duplikálunk el,
-    # hogy a különböző évek sorai is látszódjanak)
+    # Az összes park–év kombináció megőrzése 
     all_parks = filtered_df[["park_ID", "park_nev", "park_email", "alapadat_ev"]]
 
     # Azok a park_ID-k, amelyeknek van adata a célévben
@@ -313,8 +197,7 @@ def report_missing(df, cfg, agg_map=None, mgmt_df=None):
     # Hiányzó parkok: amelyek szerepelnek az adatokban, de NEM a célévben
     missing = all_parks[~all_parks["park_ID"].isin(parks_with_year["park_ID"])].copy()
 
-    # Kezelői e-mail hozzáfűzése bal oldali összekapcsolással;
-    # ha nincs mgmt_df, az oszlopot NaN-nal töltjük fel
+    # Kezelői e-mail hozzáfűzése bal oldali összekapcsolással
     if mgmt_df is not None:
         missing = missing.merge(mgmt_df, on="park_ID", how="left")
     else:
@@ -322,8 +205,7 @@ def report_missing(df, cfg, agg_map=None, mgmt_df=None):
 
     missing = missing.reset_index(drop=True)
 
-    # Parkonkénti összesítés: a park_email első előfordulását tartjuk meg,
-    # a management_email értékeket pontosvesszővel fűzzük össze (ha több van)
+    # Parkonkénti összesítés
     consolidated = (missing.groupby(["park_ID", "park_nev"], as_index=False).agg({
             "park_email": "first",
             "management_email": lambda x: "; ".join(sorted(x.dropna().unique()))
@@ -334,30 +216,6 @@ def report_missing(df, cfg, agg_map=None, mgmt_df=None):
 
 # Területi bontású pivot-tábla (mutatók vagy évek szerint) éves összehasonlítással és park-szintű átlagokkal
 def report_pivot(df, cfg, agg_map_all, mgmt_df=None):
-    """
-    A kimenet oszlopai:
-    - <metrika>_<év>          : az aggregált érték az adott évre és csoportra
-    - <metrika>_<év>_Per_Park : egy parkra jutó átlag
-    - <metrika>_Változás_per_park   : abszolút változás az első és utolsó év között
-    - <metrika>_Változás_%_per_park : relatív változás százalékban
-
-    Args:
-        df (pd.DataFrame): A teljes adatkészlet.
-        cfg (dict): Riport konfiguráció; kötelező kulcsok:
-            - 'group_col': a csoportosítási oszlop neve (pl. 'park_regio')
-            - 'agg': aggregációs készlet neve ('small' vagy 'full')
-          opcionális kulcsok:
-            - 'metric': egyetlen mutató neve (str)
-            - 'metrics': több mutató listája
-            - 'years': szűrendő évek listája
-            - 'filter_values': a group_col szerinti szűrési értékek
-        agg_map_all (dict): Az aggregációs konfigurációk szótára
-            (small / full kulcsokkal).
-        mgmt_df: Nincs használatban; az egységes függvényszignatúra miatt szerepel.
-
-    Returns:
-        pd.DataFrame: A kerekített pivot-tábla, indexe a group_col értékei.
-    """
     # A konfigurációban megadott aggregációs készlet kiválasztása
     agg_dict = agg_map_all[cfg["agg"]]
 
@@ -442,32 +300,6 @@ def report_pivot(df, cfg, agg_map_all, mgmt_df=None):
 
 # Éves összesítő tábla az összes park adataibol, mutató alapján, parkszintu atlagokkal
 def report_totals(df, cfg, agg_map_all, mgmt_df=None):
-    """
-    A kimenet sorai a mutatók, oszlopai az évek. Minden évhez két oszlop kerül:
-    - <ev>        : az aggregált összeértékek (sum) vagy átlag (mean)
-    - <ev> Átlag  : egy parkra jutó átlag (sum típusnál osztás a parkszámmal,
-                   mean típusnál megegyezik az aggregált értékkel)
-
-    Ha legalább két év szerepel, két további oszlop is keletkezik:
-    - 'Növekedes'     : abszolút változás az első es utolsó év átlagai között
-    - 'Növekedes (%)' : relativ változás százalékban az első év átlagához képest
-
-    Args:
-        df (pd.DataFrame): A teljes adatkeszlet.
-        cfg (dict): Riport konfiguracio; kotelezo kulcs:
-            - 'agg': aggregacios keszlet neve ('small' vagy 'full')
-          opcionalis kulcsok:
-            - 'years': szurendo evek listaja; ha hiányzik, az adatbol veszi
-            - 'filter_col': szuresi oszlop neve
-            - 'filter_values': szuresi ertekek listaja
-        agg_map_all (dict): Az aggregacios konfiguraciok szotara
-            (small / full kulcsokkal).
-        mgmt_df: Nincs hasznalva; az egyseg fuggvenyszignatjura miatt szerepel.
-
-    Returns:
-        pd.DataFrame: A kerekitett osszesito tabla
-            (sorok = metrikak, oszlopok = evek + atlagok + novekedes).
-    """
     # A konfigurációban megadott aggregációs készlet kiválasztása
     agg_dict = agg_map_all[cfg["agg"]]
 
@@ -531,7 +363,7 @@ def report_totals(df, cfg, agg_map_all, mgmt_df=None):
 
 def main():
 
-    # --- Parancssori argumentumok feldolgozása ---
+    # Parancssori argumentumok feldolgozása - adatbázis fájl, futtatandó riportok megadása
     parser = argparse.ArgumentParser(
         description="Ipari park riport generátor. Adatokat olvas egy SQLite adatbázisból és ODS fájlokat állít elő."
     )
@@ -566,8 +398,7 @@ def main():
 
     args = parser.parse_args()
 
-    # --- Magyar riportnév → belső típusnév megfeleltetés ---
-    # A belső típusneveket a riportkonfiguráció és a fájlnévgenerátor használja.
+    # Magyar riportnév → belső típusnév megfeleltetés (ezt a riportkonfiguráció és a fájlnévgenerátor használja.
     RIPORT_NEV_MAP = {
         "osszesites": "totals",
         "novekedes":  "novekedes",
@@ -575,10 +406,9 @@ def main():
         "hianyzo":    "missing",
     }
 
-    # --- Aggregációs konfiguráció betöltése ---
     AGG_CONFIG = get_agg_config()
 
-    # --- Adatbázis fájl ellenőrzése ---
+    # Adatbázis fájl ellenőrzése
     DB_PATH = args.db
     print(f"Adatbázis fájl: '{DB_PATH}'")
     if not os.path.isfile(DB_PATH):
@@ -586,13 +416,13 @@ def main():
         print("Ellenőrizze az elérési utat, és adja meg a --db paraméterrel.")
         raise SystemExit(1)
 
-    # --- Adatbázis kapcsolat és adatbetöltés ---
+    # Adatbázis kapcsolat és adatbetöltés
     try:
         with sqlite3.connect(DB_PATH) as conn:
             # Fő adattábla összeállítása a nézetekből
             df = load_data(conn)
 
-            # Kezelői e-mail címek betöltése; több cím esetén pontosvesszővel fűzi össze
+            # Management e-mail betöltése
             mgmt_df = pd.read_sql("SELECT park_ID, management_email FROM management_latest", conn)
             mgmt_df = (
                 mgmt_df
@@ -601,23 +431,19 @@ def main():
                 .reset_index()
             )
     except sqlite3.OperationalError as e:
-        # Hiányzó tábla/nézet vagy más SQLite szintű hiba
         print(f"HIBA: Az adatbázis olvasása sikertelen (SQLite): {e}")
         print("Ellenőrizze, hogy az adatbázis fájl érvényes SQLite adatbázis-e, és tartalmazza a szükséges táblákat/nézeteket.")
         raise SystemExit(1)
     except pd.errors.DatabaseError as e:
-        # pandas által dobott adatbázis-hiba (pl. érvénytelen SQL lekérdezés)
         print(f"HIBA: Az adatbázis lekérdezése sikertelen (pandas): {e}")
         print("Ellenőrizze az adatbázis sémáját és a szükséges nézeteket.")
         raise SystemExit(1)
     except Exception as e:
-        # Váratlan hiba az adatbetöltés során
         print(f"HIBA: Váratlan hiba az adatbetöltés során: {e}")
         traceback.print_exc()
         raise SystemExit(1)
 
-    # --- Elérhető riportok definíciója ---
-    # Minden elem tartalmazza a riportfüggvényt és a hozzá tartozó konfigurációt.
+    # Elérhető riportok definíciója (függvény + konfiguráció)
     reporting = [
         {"func": report_totals,  "cfg": {"type": "totals",    "agg": "small", "years": [2021, 2022, 2023], "filter_col": "park_regio", "filter_values": ["Közép-Dunántúl"]}},
         {"func": report_pivot,   "cfg": {"type": "novekedes", "group_col": "park_regio", "agg": "small", "metrics": ["EU_osszkoltseg", "arbevetel", "exportarany"], "years": [2021, 2022]}},
@@ -625,7 +451,7 @@ def main():
         {"func": report_missing, "cfg": {"type": "missing",   "year": 2024,  "filter_col": "park_regio", "filter_values": ["Közép-Dunántúl"]}},
     ]
 
-    # --- Futtatandó riportok kiválasztása ---
+    # Futtatandó riportok kiválasztása
     if args.all or args.riport is None:
         # --all jelző vagy hiányzó --riport esetén minden riport lefut
         selected_reports = reporting
@@ -642,7 +468,7 @@ def main():
                 log(f"FIGYELMEZTETÉS: Ismeretlen riportnév: '{nev}'. Érvényes nevek: {ervenyes}")
         selected_reports = [r for r in reporting if r["cfg"]["type"] in belso_tipusok]
 
-    # --- Riportok futtatása ---
+    # Riportok futtatása
     for report in selected_reports:
         try:
             run_report(report, df, AGG_CONFIG, mgmt_df)
