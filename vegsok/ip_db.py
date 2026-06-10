@@ -4,7 +4,18 @@ from xml.parsers.expat import errors
 import pandas as pd
 import sqlite3
 import datetime
+
+from pandas.io import sql
 from thefuzz import process, fuzz
+import shutil 
+
+
+USER_UID = os.getuid()
+
+HELYI_MAPPA = "/home/peti/Dokumentumok/gdf/adatbazis/vegsok"
+KULSO_MEGHAJTO = "/media/peti/04C8-4C32"
+FELHO_MAPPA = f"/run/user/{USER_UID}/gvfs/google-drive:host=gmail.com,user=zora.hlinka/Saját meghajtó/GDF/szakdolgozat/IP_mentes"
+
 
 sheets_to_read = ['Adatok', 'Management', 'Elnyert EU-s támogatás', 'Infrastruktúra', 'Szolgáltatások']
 
@@ -471,9 +482,48 @@ def insert_df(transaction_conn, table_name, dataframe):
 
     # Soronkénti beillesztés (itertuples gyorsabb, mint iterrows),
     # Minden pandas NA/NaN értéket None-ra alakít, hogy NULL-ként kerüljön az adatbázisba
-    for row in dataframe.itertuples(index=False, name=None):
-        values = tuple(None if pd.isna(value) else value for value in row)
-        transaction_conn.execute(sql, values)
+    #for row in dataframe.itertuples(index=False, name=None):
+        #values = tuple(None if pd.isna(value) else value for value in row)
+        #transaction_conn.execute(sql, values)
+    values_list = [
+        tuple(None if pd.isna(v) else v for v in row)
+        for row in dataframe.itertuples(index=False, name=None)
+    ]
+
+    transaction_conn.executemany(sql, values_list)
+
+# Az adatbázisba írás (commit) után biztonsagi mentés
+
+def biztonsagi_mentes(db_path):
+    idobelyeg = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    fajlnev = f"IP_backup_{idobelyeg}.db"
+    os.makedirs(HELYI_MAPPA, exist_ok=True)
+    local_path = os.path.join(HELYI_MAPPA, fajlnev)
+    
+    # Elsődleges mentés helyi meghajtóra (HELYI_MAPPA) 
+    shutil.copy2(db_path, local_path)
+
+    print(f"Helyi mentés elkészült: {local_path}")
+
+    # Külső meghajtó
+    try:
+        os.makedirs(KULSO_MEGHAJTO, exist_ok=True)
+        shutil.copy2(local_path, os.path.join(KULSO_MEGHAJTO, fajlnev))
+        print("Második példány elkészült.")
+    except Exception as e:
+        print(f"Külső meghajtó mentés sikertelen: {e}")
+    
+    # Felhő
+    try:
+        # Ellenőrizzük, hogy fel van-e csatolva a Drive (rá kell kattintani a fájlkezelőben) 
+        if os.path.exists(f"/run/user/{USER_UID}/gvfs/google-drive:host=gmail.com,user=zora.hlinka"):
+            os.makedirs(FELHO_MAPPA, exist_ok=True)
+            shutil.copyfile(local_path, os.path.join(FELHO_MAPPA, fajlnev)) 
+            print("Felhő mentés elkészült.")
+        else: 
+            print("Felhő mentés sikertelen: A Google Drive nincs felcsatolva, meg kell nyitni a fájlkezelőben!")
+    except Exception as e:
+        print(f"Felhő mentés sikertelen: {e}")
 
 
 # Fő függvény az adatok transzformálásához és adatbázisba írásához
@@ -512,6 +562,7 @@ def transform_write_to_db(db, all_data, column_mapping):
     # Adatbázisba írás (azonosító keresés és beszúrás, majd a kapcsolódó adatok írása tranzakcióban)
     try:
         with sqlite3.connect(db) as conn:
+            
             cursor = conn.cursor()
 
             # Park azonosító lekérése/generálása
@@ -613,11 +664,20 @@ def transform_write_to_db(db, all_data, column_mapping):
             clean_szolg_data_df = final_merged_szolg_df.dropna(subset=['szolgaltato_fajta']).copy()
             clean_szolg_data_df['park_ID'] = park_id
             insert_df(conn, 'szolgaltatas', clean_szolg_data_df)
+            
+            
+            
+
     except Exception as e:
         print(f"Hiba történt az adatbázis művelet során: {e}")
         raise
+
     finally:
         conn.close()
+
+    print("Backup indul")
+    biztonsagi_mentes(db)
+    print("Backup kész")
 
 # Adatbázis létrehozása a séma, nézetek és indexek alapján
 def init_db(db_path):
@@ -640,7 +700,11 @@ def init_db(db_path):
     combined_sql = '\n'.join(sql_reszek)
 
     # Adatbázis létrehozása és az összes utasítás végrehajtása
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(db_path, timeout=30) as conn:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+        conn.execute("PRAGMA busy_timeout = 30000;")
+        
         conn.executescript(combined_sql)
 
     print(f"Az adatbázis sikeresen létrehozva: '{db_path}'")
