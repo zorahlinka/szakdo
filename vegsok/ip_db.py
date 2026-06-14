@@ -700,11 +700,7 @@ def init_db(db_path):
     combined_sql = '\n'.join(sql_reszek)
 
     # Adatbázis létrehozása és az összes utasítás végrehajtása
-    with sqlite3.connect(db_path, timeout=30) as conn:
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA synchronous=NORMAL;")
-        conn.execute("PRAGMA busy_timeout = 30000;")
-        
+    with sqlite3.connect(db_path) as conn:
         conn.executescript(combined_sql)
 
     print(f"Az adatbázis sikeresen létrehozva: '{db_path}'")
